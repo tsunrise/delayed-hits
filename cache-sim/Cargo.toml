@@ -6,3 +6,5 @@ edition = "2021"
 # See more keys and their definitions at https://doc.rust-lang.org/cargo/reference/manifest.html
 
 [dependencies]
+ahash = {version = "0.8.11", default-features = false, features = ["std", "compile-time-rng"]}
+linked-hash-map = "0.5.6"
