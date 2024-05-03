@@ -1,42 +1,74 @@
 pub mod lru;
 
-use std::{fmt::Debug, hash::{Hash, Hasher as _}};
+use std::{
+    fmt::Debug,
+    hash::{Hash, Hasher as _},
+};
 
 use ahash::AHasher;
 
 use crate::types::Timestamp;
 
-pub trait ObjectId: Hash + Eq + PartialEq + Clone + Debug{
-    fn get_hash(&self) -> u64{
+pub trait ObjectId: Hash + Eq + PartialEq + Clone + Debug {
+    fn get_hash(&self) -> u64 {
         let mut hasher = AHasher::default();
         self.hash(&mut hasher);
         hasher.finish()
     }
+}
 
-    fn get_cache<'a, C>(&self, caches: &'a mut [C]) -> &'a mut C{
-        let index = (self.get_hash() as usize) % caches.len();
-        &mut caches[index]
+impl<T: Hash + Eq + PartialEq + Clone + Debug> ObjectId for T {}
+
+/// A cache store with no values stored.
+pub trait Cache<K: ObjectId, V> {
+    /// Write a key in the cache. Evict will happen if the cache is full.
+    /// `write` should be called only when
+    /// - A key is accessed and there is a miss and the miss has been fetched from the backing store.
+    /// - We need to update the value of a key in the cache.
+    ///
+    /// `timestamp` is only used for heuristics for the eviction policy (to compute the estimated TTNA)
+    fn write(&mut self, key: K, value: V, timestamp: Timestamp);
+
+    /// Get the value of a key in the cache, and the cache might update its internal state corresponding to the access.
+    fn get(&mut self, key: &K, timestamp: Timestamp) -> Option<&V>;
+
+    /// Check if the key is in the cache.
+    fn contains(&self, key: &K) -> bool;
+}
+
+pub struct MultiCache<K: ObjectId, V, C: Cache<K, V>> {
+    caches: Vec<C>,
+    _phantom: std::marker::PhantomData<(K, V)>,
+}
+
+pub fn construct_k_way_cache<K: ObjectId, V, C: Cache<K, V>>(
+    k: usize,
+    constructor: impl Fn(usize) -> C,
+) -> MultiCache<K, V, C> {
+    MultiCache {
+        caches: (0..k).map(constructor).collect(),
+        _phantom: std::marker::PhantomData,
     }
 }
 
-impl<T: Hash + Eq + PartialEq + Clone + Debug> ObjectId for T{}
+fn get_cache_idx<K: ObjectId>(k: usize, key: &K) -> usize {
+    let hash = key.get_hash();
+    hash as usize % k
+}
 
+impl<K: ObjectId, V, C: Cache<K, V>> Cache<K, V> for MultiCache<K, V, C> {
+    fn write(&mut self, key: K, value: V, timestamp: Timestamp) {
+        let idx = get_cache_idx(self.caches.len(), &key);
+        self.caches[idx].write(key, value, timestamp);
+    }
 
-/// A cache store with no values stored.
-pub trait Cache<K: ObjectId>{
-    /// Write or revisit a key in the cache. Evict will happen if the cache is full.
-    /// `write` should be called when
-    /// - A key is accessed and there is a miss and the miss has been fetched from the backing store.
-    /// - A key is accessed and cache hit occurs.
-    /// 
-    /// `timestamp` is only used for heuristics for the eviction policy (to compute the estimated TTNA)
-    fn write(&mut self, key: K, timestamp: Timestamp);
+    fn get(&mut self, key: &K, timestamp: Timestamp) -> Option<&V> {
+        let idx = get_cache_idx(self.caches.len(), key);
+        self.caches[idx].get(key, timestamp)
+    }
 
-    /// Check if a key is in the cache.
-    fn contains(&self, key: &K) -> bool;
-
-    /// Report an access to a key. This is only used as heuristics for the eviction policy. 
-    /// `report_access` should be called when a key is accessed.
-    fn report_access(&mut self, key: K, timestamp: Timestamp);
-    
+    fn contains(&self, key: &K) -> bool {
+        let idx = get_cache_idx(self.caches.len(), key);
+        self.caches[idx].contains(key)
+    }
 }

@@ -3,3 +3,4 @@
 members = ["cache-sim"
     
 ]
+resolver = "2"

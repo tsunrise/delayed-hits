@@ -70,13 +70,13 @@ where
 /// Run a delay-aware cache simulation, given a `caches.len()`-Way set associative cache and a sequence of requests. Return a vector of `RequestResult`.
 /// - `miss_penalty` is the time in nanoseconds it takes to fetch a missed request from the backing store.
 pub fn run_simulation<K, C, I>(
-    caches: &mut [C],
+    cache: &mut C,
     requests: I,
     miss_penalty: usize,
 ) -> Vec<RequestResult<K>>
 where
     K: ObjectId,
-    C: Cache<K>,
+    C: Cache<K, ()>,
     I: IntoIterator<Item = (K, Timestamp)>,
 {
     // Requests that are currently in fetching state.
@@ -102,11 +102,8 @@ where
                 break;
             }
             Event::Request(key, timestamp) => {
-                let cache = key.get_cache(caches);
-                cache.report_access(key.clone(), timestamp);
-                if cache.contains(&key) {
+                if let Some(_) = cache.get(&key, timestamp) {
                     // the request is immediately fulfilled.
-                    cache.write(key.clone(), timestamp);
                     results.push(RequestResult {
                         key,
                         request_timestamp: timestamp,
@@ -123,7 +120,6 @@ where
                 }
             }
             Event::Completion(key, timestamp) => {
-                let cache = key.get_cache(caches);
                 debug_assert!(!cache.contains(&key), "{key:?} should not in the cache until the completion of the request, but it is.");
                 let pending_requests = requests_in_progress
                     .remove(&key)
@@ -133,7 +129,7 @@ where
                     "pending requests for {key:?} should not be empty."
                 );
 
-                cache.write(key.clone(), timestamp);
+                cache.write(key.clone(), (), timestamp);
                 pending_requests.into_iter().for_each(|req_timestamp| {
                     results.push(RequestResult {
                         key: key.clone(),
