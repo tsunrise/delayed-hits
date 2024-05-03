@@ -94,63 +94,28 @@ mod tests {
         results.sort_by_key(|r| r.request_timestamp);
         assert_eq!(
             results,
-            vec![
-                RequestResult {
-                    key: B,
-                    request_timestamp: 0,
-                    completion_timestamp: 5
-                },
-                RequestResult {
-                    key: A,
-                    request_timestamp: 1,
-                    completion_timestamp: 6
-                },
-                RequestResult {
-                    key: A,
-                    request_timestamp: 4,
-                    completion_timestamp: 6
-                },
-                RequestResult {
-                    key: A,
-                    request_timestamp: 5,
-                    completion_timestamp: 6
-                },
-                RequestResult {
-                    key: B,
-                    request_timestamp: 7,
-                    completion_timestamp: 7
-                },
-                RequestResult {
-                    key: C,
-                    request_timestamp: 8,
-                    completion_timestamp: 13
-                },
-                RequestResult {
-                    key: A,
-                    request_timestamp: 9,
-                    completion_timestamp: 9
-                },
-                RequestResult {
-                    key: B,
-                    request_timestamp: 14,
-                    completion_timestamp: 19
-                },
-                RequestResult {
-                    key: C,
-                    request_timestamp: 15,
-                    completion_timestamp: 15
-                },
-                RequestResult {
-                    key: A,
-                    request_timestamp: 19,
-                    completion_timestamp: 19
-                },
-                RequestResult {
-                    key: C,
-                    request_timestamp: 20,
-                    completion_timestamp: 25
-                },
+            [
+                (B, 0, 5),
+                (A, 1, 6),
+                (A, 4, 6),
+                (A, 5, 6),
+                (B, 7, 7),
+                (C, 8, 13),
+                (A, 9, 9),
+                (B, 14, 19),
+                (C, 15, 15),
+                (A, 19, 19),
+                (C, 20, 25)
             ]
+            .into_iter()
+            .map(
+                |(key, request_timestamp, completion_timestamp)| RequestResult {
+                    key,
+                    request_timestamp,
+                    completion_timestamp
+                }
+            )
+            .collect::<Vec<_>>()
         );
     }
 }
