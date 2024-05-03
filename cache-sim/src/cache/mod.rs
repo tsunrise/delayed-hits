@@ -1,3 +1,5 @@
+pub mod lru;
+
 use std::{fmt::Debug, hash::{Hash, Hasher as _}};
 
 use ahash::AHasher;
