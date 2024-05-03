@@ -1,8 +1,8 @@
-// only print events if feature "verbose-sim" is enabled
+/// only print if feature `verbose` is enabled
 #[macro_export]
 macro_rules! verbose {
     ($($arg:tt)*) => {
-        if cfg!(feature = "verbose-sim") {
+        if cfg!(feature = "verbose") {
             println!($($arg)*);
         }
     }

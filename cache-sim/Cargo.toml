@@ -10,4 +10,4 @@ ahash = {version = "0.8.11", default-features = false, features = ["std", "compi
 linked-hash-map = "0.5.6"
 
 [features]
-verbose-sim = []
+verbose = []
