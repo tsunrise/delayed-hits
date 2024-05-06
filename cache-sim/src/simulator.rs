@@ -143,3 +143,35 @@ where
 
     results
 }
+
+pub struct Statistics {
+    pub total_latency: u64,
+    pub average_latency: f64,
+    pub latencies_by_timestamp_sorted: Vec<(Timestamp, u64)>,
+}
+
+pub fn compute_statistics<K>(result: &[RequestResult<K>]) -> Statistics {
+    let mut latencies_by_timestamp_sorted = result
+        .iter()
+        .map(|r| {
+            (
+                r.request_timestamp,
+                r.completion_timestamp - r.request_timestamp,
+            )
+        })
+        .collect::<Vec<_>>();
+    latencies_by_timestamp_sorted.sort_by_key(|&(timestamp, _)| timestamp);
+
+    let total_latency: u64 = latencies_by_timestamp_sorted
+        .iter()
+        .map(|(_, latency)| *latency)
+        .sum();
+
+    let average_latency = total_latency as f64 / latencies_by_timestamp_sorted.len() as f64;
+
+    Statistics {
+        total_latency,
+        average_latency,
+        latencies_by_timestamp_sorted,
+    }
+}
