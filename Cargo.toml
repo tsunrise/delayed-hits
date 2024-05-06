@@ -1,6 +1,5 @@
 [workspace]
 
-members = ["cache-sim"
-    
-]
+members = ["cache-sim"  
+, "proj-models"]
 resolver = "2"
