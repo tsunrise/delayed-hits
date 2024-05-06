@@ -5,7 +5,7 @@ use serde_derive::{Deserialize, Serialize};
 use std::fmt::Debug;
 use std::hash::Hash;
 
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct RequestEvent<K>
 where
     K: Hash + Eq + PartialEq + Clone + Debug + Serialize + DeserializeOwned,
@@ -16,7 +16,7 @@ where
 }
 
 // TODO: Deserialize to a stream if the trace is too large.
-#[derive(Debug, Serialize, Deserialize)]
+#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
 pub struct RequestEvents<K>
 where
     K: Hash + Eq + PartialEq + Clone + Debug + Serialize + DeserializeOwned,
