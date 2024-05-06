@@ -72,7 +72,7 @@ where
 pub fn run_simulation<K, C, I>(
     cache: &mut C,
     requests: I,
-    miss_penalty: usize,
+    miss_latency: usize,
 ) -> Vec<RequestResult<K>>
 where
     K: ObjectId,
@@ -114,7 +114,7 @@ where
                     if !requests_in_progress.contains_key(&key) {
                         requests_in_progress.insert(key.clone(), Vec::new());
                         future_completions
-                            .push_back((key.clone(), timestamp + miss_penalty as u64));
+                            .push_back((key.clone(), timestamp + miss_latency as u64));
                     }
                     requests_in_progress.get_mut(&key).unwrap().push(timestamp);
                 }
@@ -144,6 +144,7 @@ where
     results
 }
 
+#[derive(Debug, Clone)]
 pub struct Statistics {
     pub total_latency: u64,
     pub average_latency: f64,

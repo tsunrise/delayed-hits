@@ -13,3 +13,15 @@ pub struct RequestEvent<K> {
 pub struct RequestEvents<K> {
     pub events: Vec<RequestEvent<K>>,
 }
+
+impl<K> RequestEvents<K> {
+    pub fn new(events: Vec<RequestEvent<K>>) -> Self {
+        Self { events }
+    }
+
+    pub fn into_simulation_events(self) -> impl Iterator<Item = (K, u64)> {
+        self.events
+            .into_iter()
+            .map(|event| (event.key, event.timestamp))
+    }
+}
