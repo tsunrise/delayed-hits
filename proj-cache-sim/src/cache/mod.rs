@@ -1,4 +1,5 @@
 pub mod lru;
+pub mod lru_mad;
 
 use std::{
     fmt::Debug,
