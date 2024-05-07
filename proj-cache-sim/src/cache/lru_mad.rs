@@ -1,17 +1,17 @@
 use ahash::AHashMap;
 
-use super::ObjectId;
+use super::{Cache, ObjectId};
 
 struct ObjectMetaData {
     /// Number of miss windows this object has experienced.
     num_windows: usize,
     /// The total delay this object has experienced.
-    cumulative_delay: usize,
+    cumulative_delay: u64,
     /// The timestamp of last miss
-    window_start_timestamp: usize,
+    window_start_timestamp: u64,
     /// The timestamp of last access. Used to compute the TTNA. (TTNA = curr_timestamp - last_access_timestamp + 1)
     /// We need TTNA to compute the ranking function score = estimated aggregate delay / TTNA. Higher score means higher priority.
-    last_access_timestamp: usize,
+    last_access_timestamp: u64,
 }
 
 impl ObjectMetaData {
@@ -24,7 +24,7 @@ impl ObjectMetaData {
         }
     }
 
-    fn update(&mut self, timestamp: usize, estimated_miss_latency: usize) {
+    fn update(&mut self, timestamp: u64, estimated_miss_latency: u64) {
         let tssw = timestamp - self.window_start_timestamp;
 
         if tssw >= estimated_miss_latency {
@@ -38,7 +38,7 @@ impl ObjectMetaData {
         self.last_access_timestamp = timestamp;
     }
 
-    fn score(&self, timestamp: usize) -> f64 {
+    fn score(&self, timestamp: u64) -> f64 {
         let estimated_agg_delay = self.cumulative_delay as f64 / self.num_windows as f64;
         debug_assert!(
             timestamp >= self.last_access_timestamp,
@@ -53,4 +53,35 @@ pub struct LRUMinAD<K: ObjectId, V> {
     capacity: usize,
     value_store: AHashMap<K, V>,
     metadata_store: AHashMap<K, ObjectMetaData>,
+    estimated_miss_latency: u64,
+}
+
+impl<K: ObjectId, V> LRUMinAD<K, V> {
+    pub fn new(capacity: usize, estimated_miss_latency: u64) -> Self {
+        Self {
+            capacity,
+            value_store: AHashMap::new(),
+            metadata_store: AHashMap::new(),
+            estimated_miss_latency,
+        }
+    }
+}
+
+impl<K: ObjectId, V> Cache<K, V> for LRUMinAD<K, V> {
+    fn write(&mut self, key: K, value: V, timestamp: crate::types::Timestamp) {
+        todo!()
+    }
+
+    fn get(&mut self, key: &K, timestamp: crate::types::Timestamp) -> Option<&V> {
+        self.metadata_store
+            .entry(key.clone())
+            .or_insert_with(ObjectMetaData::new)
+            .update(timestamp, self.estimated_miss_latency);
+
+        self.value_store.get(key)
+    }
+
+    fn contains(&self, key: &K) -> bool {
+        self.value_store.contains_key(key)
+    }
 }
