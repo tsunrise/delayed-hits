@@ -69,7 +69,24 @@ impl<K: ObjectId, V> LRUMinAD<K, V> {
 
 impl<K: ObjectId, V> Cache<K, V> for LRUMinAD<K, V> {
     fn write(&mut self, key: K, value: V, timestamp: crate::types::Timestamp) {
-        todo!()
+        if self.value_store.contains_key(&key) {
+            self.value_store.insert(key, value);
+        } else {
+            if self.value_store.len() == self.capacity {
+                let key_to_evict = self
+                    .value_store
+                    .keys()
+                    .map(|k| (k, self.metadata_store.get(k).unwrap().score(timestamp)))
+                    .min_by(|(_, score1), (_, score2)| score1.partial_cmp(score2).unwrap())
+                    .expect("value_store should not be empty")
+                    .0
+                    .clone();
+                self.value_store.remove(&key_to_evict);
+                // key is kept in metadata_store forever, at this point
+            }
+            self.value_store.insert(key, value);
+            debug_assert!(self.value_store.len() <= self.capacity);
+        }
     }
 
     fn get(&mut self, key: &K, timestamp: crate::types::Timestamp) -> Option<&V> {

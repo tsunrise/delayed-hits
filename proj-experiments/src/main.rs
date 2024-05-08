@@ -15,14 +15,26 @@ fn sanity_check_using_example(
     let example_events = data::load_example_events(example_path);
 
     let mut lru = construct_k_way_cache(cache_counts, |_| LRU::new(cache_capacity));
-    let request_results = run_simulation(
+    let request_results_lru = run_simulation(
         &mut lru,
-        example_events.into_simulation_events(),
+        example_events.to_simulation_events(),
         miss_latency,
     );
 
-    let stats = compute_statistics(&request_results);
-    println!("average latency: {}", stats.average_latency);
+    let stats = compute_statistics(&request_results_lru);
+    println!("average latency (lru): {}", stats.average_latency);
+
+    let mut lru_mad = construct_k_way_cache(cache_counts, |_| {
+        proj_cache_sim::cache::lru_mad::LRUMinAD::new(cache_capacity, miss_latency as u64)
+    });
+    let request_results_lru_mad = run_simulation(
+        &mut lru_mad,
+        example_events.to_simulation_events(),
+        miss_latency,
+    );
+
+    let stats = compute_statistics(&request_results_lru_mad);
+    println!("average latency (lru-mad): {}", stats.average_latency);
 }
 
 #[derive(Debug, Subcommand)]

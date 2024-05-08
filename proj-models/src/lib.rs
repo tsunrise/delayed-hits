@@ -19,6 +19,15 @@ impl<K> RequestEvents<K> {
         Self { events }
     }
 
+    pub fn to_simulation_events(&self) -> impl Iterator<Item = (K, u64)> + '_
+    where
+        K: Clone,
+    {
+        self.events
+            .iter()
+            .map(|event| (event.key.clone(), event.timestamp))
+    }
+
     pub fn into_simulation_events(self) -> impl Iterator<Item = (K, u64)> {
         self.events
             .into_iter()
