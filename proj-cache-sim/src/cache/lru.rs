@@ -1,6 +1,6 @@
 use linked_hash_map::LinkedHashMap;
 
-use crate::types::Timestamp;
+use crate::types::Nanosecond;
 
 use super::{Cache, ObjectId};
 
@@ -20,7 +20,7 @@ impl<K: ObjectId, V> LRU<K, V> {
 }
 
 impl<K: ObjectId, V> Cache<K, V> for LRU<K, V> {
-    fn write(&mut self, key: K, value: V, _timestamp: Timestamp) {
+    fn write(&mut self, key: K, value: V, _timestamp: Nanosecond) {
         if self.store.contains_key(&key) {
             self.store.insert(key, value);
         } else {
@@ -32,7 +32,7 @@ impl<K: ObjectId, V> Cache<K, V> for LRU<K, V> {
         }
     }
 
-    fn get(&mut self, key: &K, _timestamp: Timestamp) -> Option<&V> {
+    fn get(&mut self, key: &K, _timestamp: Nanosecond) -> Option<&V> {
         self.store.get_refresh(key).map(|v| &*v)
     }
 

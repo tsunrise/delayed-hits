@@ -1,19 +1,21 @@
+mod example_parser;
+mod pcap_parser;
+
 use std::io::Write;
 
 use clap::{Parser, ValueEnum};
+use pcap_parser::Flow;
 use proj_models::RequestEvent;
 use serde::Serialize;
 
-mod example_parser;
-
-fn read_example_events(path: &str) -> Vec<RequestEvent<u32>> {
+fn read_example_events_from_file(path: &str) -> Vec<RequestEvent<u32>> {
     let file = std::fs::File::open(path).unwrap();
-    example_parser::read_events(file)
+    example_parser::read_example_events(file)
 }
 
-fn read_network_traces(path: &str) -> Vec<RequestEvent<(u32, u16)>> {
-    // (ip, port)
-    todo!()
+fn read_pcap_traces_from_file(path: &str) -> Vec<RequestEvent<Flow>> {
+    let file = std::fs::File::open(path).unwrap();
+    pcap_parser::read_pcap_events(file)
 }
 
 fn write_events_to_binary_file<K>(events: &[RequestEvent<K>], path: &str)
@@ -50,11 +52,11 @@ fn main() {
     let args = Args::parse();
     match args.ftype {
         RunType::Example => {
-            let events = read_example_events(&args.path);
+            let events = read_example_events_from_file(&args.path);
             write_events_to_binary_file(&events, &args.output);
         }
         RunType::Traces => {
-            let events = read_network_traces(&args.path);
+            let events = read_pcap_traces_from_file(&args.path);
             write_events_to_binary_file(&events, &args.output);
         }
     }

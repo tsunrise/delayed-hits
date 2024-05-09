@@ -8,7 +8,7 @@ use std::{
 
 use ahash::AHasher;
 
-use crate::types::Timestamp;
+use crate::types::Nanosecond;
 
 pub trait ObjectId: Hash + Eq + PartialEq + Clone + Debug {
     fn get_hash(&self) -> u64 {
@@ -28,10 +28,10 @@ pub trait Cache<K: ObjectId, V> {
     /// - We need to update the value of a key in the cache.
     ///
     /// `timestamp` is only used for heuristics for the eviction policy (to compute the estimated TTNA)
-    fn write(&mut self, key: K, value: V, timestamp: Timestamp);
+    fn write(&mut self, key: K, value: V, timestamp: Nanosecond);
 
     /// Get the value of a key in the cache, and the cache might update its internal state corresponding to the access.
-    fn get(&mut self, key: &K, timestamp: Timestamp) -> Option<&V>;
+    fn get(&mut self, key: &K, timestamp: Nanosecond) -> Option<&V>;
 
     /// Check if the key is in the cache.
     fn contains(&self, key: &K) -> bool;
@@ -58,12 +58,12 @@ fn get_cache_idx<K: ObjectId>(k: usize, key: &K) -> usize {
 }
 
 impl<K: ObjectId, V, C: Cache<K, V>> Cache<K, V> for MultiCache<K, V, C> {
-    fn write(&mut self, key: K, value: V, timestamp: Timestamp) {
+    fn write(&mut self, key: K, value: V, timestamp: Nanosecond) {
         let idx = get_cache_idx(self.caches.len(), &key);
         self.caches[idx].write(key, value, timestamp);
     }
 
-    fn get(&mut self, key: &K, timestamp: Timestamp) -> Option<&V> {
+    fn get(&mut self, key: &K, timestamp: Nanosecond) -> Option<&V> {
         let idx = get_cache_idx(self.caches.len(), key);
         self.caches[idx].get(key, timestamp)
     }

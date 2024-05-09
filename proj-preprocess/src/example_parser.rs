@@ -12,7 +12,7 @@ fn line_to_event(line: &str) -> Option<RequestEvent<u32>> {
     Some(RequestEvent { key, timestamp })
 }
 
-pub fn read_events<R: Read>(reader: R) -> Vec<RequestEvent<u32>> {
+pub fn read_example_events<R: Read>(reader: R) -> Vec<RequestEvent<u32>> {
     std::io::BufReader::new(reader)
         .lines()
         .filter_map(|line| line.ok())
@@ -45,7 +45,7 @@ mod tests {
         ];
 
         for case in cases {
-            let events = read_events(case.as_bytes());
+            let events = read_example_events(case.as_bytes());
             assert_eq!(events, expected);
         }
     }

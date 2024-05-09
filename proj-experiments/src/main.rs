@@ -10,7 +10,7 @@ fn sanity_check_using_example(
     example_path: &str,
     cache_counts: usize,
     cache_capacity: usize,
-    miss_latency: usize,
+    miss_latency: u64,
 ) {
     let example_events = data::load_example_events(example_path);
 
@@ -25,7 +25,7 @@ fn sanity_check_using_example(
     println!("average latency (lru): {}", stats.average_latency);
 
     let mut lru_mad = construct_k_way_cache(cache_counts, |_| {
-        proj_cache_sim::cache::lru_mad::LRUMinAD::new(cache_capacity, miss_latency as u64)
+        proj_cache_sim::cache::lru_mad::LRUMinAD::new(cache_capacity, miss_latency)
     });
     let request_results_lru_mad = run_simulation(
         &mut lru_mad,
@@ -47,7 +47,7 @@ enum Experiment {
         #[clap(long, short = 'c')]
         cache_capacity: usize,
         #[clap(long, short = 'l')]
-        miss_latency: usize,
+        miss_latency: u64,
     },
 }
 

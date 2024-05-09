@@ -1,17 +1,19 @@
 use ahash::AHashMap;
 
+use crate::types::Nanosecond;
+
 use super::{Cache, ObjectId};
 
 struct ObjectMetaData {
     /// Number of miss windows this object has experienced.
     num_windows: usize,
     /// The total delay this object has experienced.
-    cumulative_delay: u64,
+    cumulative_delay: Nanosecond,
     /// The timestamp of last miss
-    window_start_timestamp: u64,
+    window_start_timestamp: Nanosecond,
     /// The timestamp of last access. Used to compute the TTNA. (TTNA = curr_timestamp - last_access_timestamp + 1)
     /// We need TTNA to compute the ranking function score = estimated aggregate delay / TTNA. Higher score means higher priority.
-    last_access_timestamp: u64,
+    last_access_timestamp: Nanosecond,
 }
 
 impl ObjectMetaData {
@@ -24,7 +26,7 @@ impl ObjectMetaData {
         }
     }
 
-    fn update(&mut self, timestamp: u64, estimated_miss_latency: u64) {
+    fn update(&mut self, timestamp: Nanosecond, estimated_miss_latency: Nanosecond) {
         let tssw = timestamp - self.window_start_timestamp;
 
         if tssw >= estimated_miss_latency {
@@ -38,7 +40,7 @@ impl ObjectMetaData {
         self.last_access_timestamp = timestamp;
     }
 
-    fn score(&self, timestamp: u64) -> f64 {
+    fn score(&self, timestamp: Nanosecond) -> f64 {
         let estimated_agg_delay = self.cumulative_delay as f64 / self.num_windows as f64;
         debug_assert!(
             timestamp >= self.last_access_timestamp,
@@ -53,11 +55,11 @@ pub struct LRUMinAD<K: ObjectId, V> {
     capacity: usize,
     value_store: AHashMap<K, V>,
     metadata_store: AHashMap<K, ObjectMetaData>,
-    estimated_miss_latency: u64,
+    estimated_miss_latency: Nanosecond,
 }
 
 impl<K: ObjectId, V> LRUMinAD<K, V> {
-    pub fn new(capacity: usize, estimated_miss_latency: u64) -> Self {
+    pub fn new(capacity: usize, estimated_miss_latency: Nanosecond) -> Self {
         Self {
             capacity,
             value_store: AHashMap::new(),
@@ -68,7 +70,7 @@ impl<K: ObjectId, V> LRUMinAD<K, V> {
 }
 
 impl<K: ObjectId, V> Cache<K, V> for LRUMinAD<K, V> {
-    fn write(&mut self, key: K, value: V, timestamp: crate::types::Timestamp) {
+    fn write(&mut self, key: K, value: V, timestamp: Nanosecond) {
         if self.value_store.contains_key(&key) {
             self.value_store.insert(key, value);
         } else {
@@ -89,7 +91,7 @@ impl<K: ObjectId, V> Cache<K, V> for LRUMinAD<K, V> {
         }
     }
 
-    fn get(&mut self, key: &K, timestamp: crate::types::Timestamp) -> Option<&V> {
+    fn get(&mut self, key: &K, timestamp: Nanosecond) -> Option<&V> {
         self.metadata_store
             .entry(key.clone())
             .or_insert_with(ObjectMetaData::new)
