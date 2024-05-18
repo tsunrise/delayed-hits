@@ -4,8 +4,7 @@ mod pcap_parser;
 use std::io::Write;
 
 use clap::{Parser, ValueEnum};
-use pcap_parser::Flow;
-use proj_models::RequestEvent;
+use proj_models::{network::Flow, RequestEvent};
 use serde::Serialize;
 
 fn read_example_events_from_file(path: &str) -> Vec<RequestEvent<u32>> {

@@ -1,3 +1,5 @@
+pub mod network;
+
 use serde_derive::{Deserialize, Serialize};
 
 use std::fmt::Debug;

@@ -1,54 +1,39 @@
-use std::{io::Read, net::Ipv4Addr};
+use std::io::Read;
 
 use etherparse::{NetSlice, SlicedPacket, TransportSlice};
 use pcap_file::pcap::PcapReader;
-use proj_models::RequestEvent;
-use serde_derive::{Deserialize, Serialize};
+use proj_models::{
+    network::{Flow, Protocol},
+    RequestEvent,
+};
 
-#[derive(Eq, PartialEq, Hash, Debug, Clone, Copy, Serialize, Deserialize)]
-pub enum Protocol {
-    TCP,
-    UDP,
-}
+pub fn read_flow_from_pcap_data(data: &[u8]) -> Option<Flow> {
+    let parsed = SlicedPacket::from_ethernet(data).ok()?;
+    let (src_ip, dst_ip) = match parsed.net {
+        Some(NetSlice::Ipv4(ipv4)) => (
+            ipv4.header().source_addr(),
+            ipv4.header().destination_addr(),
+        ),
+        _ => return None,
+    };
 
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
-pub struct Flow {
-    pub src_ip: Ipv4Addr,
-    pub dst_ip: Ipv4Addr,
-    pub src_port: u16,
-    pub dst_port: u16,
-    pub protocol: Protocol,
-}
+    let (src_port, dst_port, protocol) = match parsed.transport {
+        Some(TransportSlice::Tcp(tcp)) => {
+            (tcp.source_port(), tcp.destination_port(), Protocol::TCP)
+        }
+        Some(TransportSlice::Udp(udp)) => {
+            (udp.source_port(), udp.destination_port(), Protocol::UDP)
+        }
+        _ => return None,
+    };
 
-impl Flow {
-    pub fn from_pcap_data(data: &[u8]) -> Option<Self> {
-        let parsed = SlicedPacket::from_ethernet(data).ok()?;
-        let (src_ip, dst_ip) = match parsed.net {
-            Some(NetSlice::Ipv4(ipv4)) => (
-                ipv4.header().source_addr(),
-                ipv4.header().destination_addr(),
-            ),
-            _ => return None,
-        };
-
-        let (src_port, dst_port, protocol) = match parsed.transport {
-            Some(TransportSlice::Tcp(tcp)) => {
-                (tcp.source_port(), tcp.destination_port(), Protocol::TCP)
-            }
-            Some(TransportSlice::Udp(udp)) => {
-                (udp.source_port(), udp.destination_port(), Protocol::UDP)
-            }
-            _ => return None,
-        };
-
-        Some(Self {
-            src_ip,
-            dst_ip,
-            src_port,
-            dst_port,
-            protocol,
-        })
-    }
+    Some(Flow {
+        src_ip,
+        dst_ip,
+        src_port,
+        dst_port,
+        protocol,
+    })
 }
 
 pub fn read_pcap_events<R: Read>(reader: R) -> Vec<RequestEvent<Flow>> {
@@ -57,7 +42,7 @@ pub fn read_pcap_events<R: Read>(reader: R) -> Vec<RequestEvent<Flow>> {
     let mut events = Vec::new();
     while let Some(pkt) = pcap_reader.next_packet() {
         if let Ok(pkt) = pkt {
-            if let Some(flow) = Flow::from_pcap_data(&pkt.data) {
+            if let Some(flow) = read_flow_from_pcap_data(&pkt.data) {
                 events.push((flow, pkt.timestamp.as_nanos()));
             }
         }
@@ -77,7 +62,7 @@ pub fn read_pcap_events<R: Read>(reader: R) -> Vec<RequestEvent<Flow>> {
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::path::PathBuf;
+    use std::{net::Ipv4Addr, path::PathBuf};
 
     #[test]
     fn test_read_pcap_events() {
