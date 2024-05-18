@@ -12,9 +12,26 @@ fn read_example_events_from_file(path: &str) -> Vec<RequestEvent<u32>> {
     example_parser::read_example_events(file)
 }
 
-fn read_pcap_traces_from_file(path: &str) -> Vec<RequestEvent<Flow>> {
-    let file = std::fs::File::open(path).unwrap();
-    pcap_parser::read_pcap_events(file)
+/// - `paths`: paths to the pcap files
+/// - `run_sort`: whether to sort the events by timestamp. If `false`, you assume the paths are already sorted by timestamp.
+fn read_pcap_traces_from_multiple_files(paths: &[&str], run_sort: bool) -> Vec<RequestEvent<Flow>> {
+    let mut events = Vec::new();
+    for path in paths {
+        let file = std::fs::File::open(path).unwrap();
+        let mut events_from_file = pcap_parser::read_pcap_events(file);
+        events.append(&mut events_from_file);
+    }
+    if run_sort {
+        events.sort_by_key(|event| event.timestamp);
+    } else {
+        assert!(
+            events
+                .windows(2)
+                .all(|pair| pair[0].timestamp <= pair[1].timestamp),
+            "Events are not sorted by timestamp, make sure they are sorted or set `--sort` flag to let us sort them for you."
+        );
+    }
+    events
 }
 
 fn write_events_to_binary_file<K>(events: &[RequestEvent<K>], path: &str)
@@ -39,23 +56,27 @@ struct Args {
     #[arg(value_enum, short, long)]
     ftype: RunType,
     #[arg(short, long)]
-    path: String,
+    paths: Vec<String>,
     #[arg(short, long)]
     output: String,
+    #[arg(short, long)]
+    sort: bool,
 }
 
 fn main() {
-    // <binary> --ftype example --path path/to/example --output path/to/output
-    // <binary> --ftype traces --path path/to/traces --output path/to/output
+    // <binary> --ftype example --paths path/to/example --output path/to/output
+    // <binary> --ftype traces --paths path/to/traces --output path/to/output
 
     let args = Args::parse();
+    let paths = args.paths.iter().map(|s| s.as_str()).collect::<Vec<_>>();
     match args.ftype {
         RunType::Example => {
-            let events = read_example_events_from_file(&args.path);
+            assert!(args.paths.len() == 1);
+            let events = read_example_events_from_file(paths[0]);
             write_events_to_binary_file(&events, &args.output);
         }
         RunType::Traces => {
-            let events = read_pcap_traces_from_file(&args.path);
+            let events = read_pcap_traces_from_multiple_files(&paths, args.sort);
             write_events_to_binary_file(&events, &args.output);
         }
     }
