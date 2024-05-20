@@ -33,6 +33,12 @@ cargo run --bin proj-preprocess --
 cargo run --bin proj-experiments --release -- network-trace -p processed.events -k <number-of-caches> -c <cache-capacity> -l <latency>
 ```
 
+- `number-of-caches` is the parameter `K` for K-way set associative cache.
+- `cache-capacity` is the parameter `C` for the cache capacity.
+- `latency` is the parameter `L` for the latency of a cache miss, in nanoseconds.
+
+That is, we have `K` caches where each object is distributed to a cache based on the hash of the object. Each cache has a capacity of `C` objects. 
+
 You can get more information about the parameters by running
 
 ```sh
