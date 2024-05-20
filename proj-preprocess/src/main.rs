@@ -1,4 +1,5 @@
 mod example_parser;
+mod msn_storage_parser;
 mod pcap_parser;
 
 use std::io::Write;

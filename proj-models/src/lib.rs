@@ -1,4 +1,5 @@
 pub mod network;
+pub mod storage;
 
 use serde_derive::{Deserialize, Serialize};
 
