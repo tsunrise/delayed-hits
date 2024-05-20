@@ -30,11 +30,11 @@ cargo run --bin proj-preprocess --
 3. Run simulation to compare the latency of LRU-MAD with LRU, using the following command
 
 ```sh
-cargo run --bin proj-experiments -- network-trace -p processed.events -k <number-of-caches> -c <cache-capacity> -l <latency>
+cargo run --bin proj-experiments --release -- network-trace -p processed.events -k <number-of-caches> -c <cache-capacity> -l <latency>
 ```
 
 You can get more information about the parameters by running
 
 ```sh
-cargo run --bin proj-experiments -- network-trace --help
+cargo run --bin proj-experiments --release -- network-trace --help
 ```
