@@ -8,7 +8,7 @@ use proj_models::{
 };
 
 pub fn read_flow_from_pcap_data(data: &[u8]) -> Option<Flow> {
-    let parsed = SlicedPacket::from_ethernet(data).ok()?;
+    let parsed = SlicedPacket::from_ip(data).ok()?;
     let (src_ip, dst_ip) = match parsed.net {
         Some(NetSlice::Ipv4(ipv4)) => (
             ipv4.header().source_addr(),
