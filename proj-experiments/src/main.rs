@@ -51,6 +51,21 @@ fn experiment_using_trace(
     run_experiment(trace_events, cache_counts, cache_capacity, miss_latency);
 }
 
+fn analyze_network_trace(trace_events_path: &str) {
+    let trace_events = data::load_network_trace_events(trace_events_path);
+    let max_active_objects =
+        proj_cache_sim::heuristics::maximum_active_objects(&trace_events.events);
+    println!("max active objects: {}", max_active_objects);
+    let ratios = [0.05];
+    for ratio in ratios.iter() {
+        println!(
+            "cache size for ratio {}: {}",
+            ratio,
+            (max_active_objects as f64 * ratio) as usize
+        );
+    }
+}
+
 #[derive(Debug, Subcommand)]
 enum Experiment {
     SanityCheck {
@@ -72,6 +87,10 @@ enum Experiment {
         cache_capacity: usize,
         #[clap(long, short = 'l')]
         miss_latency: u64,
+    },
+    NetworkTraceAnalysis {
+        #[clap(long, short = 'p')]
+        events_path: String,
     },
 }
 
@@ -100,6 +119,9 @@ fn main() {
             miss_latency,
         } => {
             experiment_using_trace(&events_path, cache_counts, cache_capacity, miss_latency);
+        }
+        Experiment::NetworkTraceAnalysis { events_path } => {
+            analyze_network_trace(&events_path);
         }
     }
 }
