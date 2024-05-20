@@ -17,6 +17,16 @@ cargo run --bin proj-preprocess --
     --output processed.events
 ```
 
+If you need to concat Net Events file:
+```sh
+cargo run --bin proj-preprocess -- 
+    --ftype processed-net-events
+    --paths <paths_to_events> 
+    --paths <additional_path>
+    ... 
+    --output processed.events
+```
+
 3. Run simulation to compare the latency of LRU-MAD with LRU, using the following command
 
 ```sh
