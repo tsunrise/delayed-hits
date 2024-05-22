@@ -7,6 +7,7 @@ edition = "2021"
 
 [dependencies]
 ahash = {version = "0.8.11", default-features = false, features = ["std", "compile-time-rng"]}
+derivative = "2.2.0"
 linked-hash-map = "0.5.6"
 proj-models = { version = "0.1.0", path = "../proj-models" }
 
