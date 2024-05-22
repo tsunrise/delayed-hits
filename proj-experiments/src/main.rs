@@ -59,7 +59,10 @@ where
     let improvement = (lru_avg_latency - lru_mad_avg_latency) / lru_avg_latency;
     println!("improvement (%): {}", improvement * 100.0);
 
-    println!("{}, {}", lru_avg_latency, lru_mad_avg_latency);
+    println!(
+        "CSV: {}, {}, {}, {}",
+        cache_counts, cache_capacity, lru_avg_latency, lru_mad_avg_latency
+    );
 }
 
 fn sanity_check_using_example(
