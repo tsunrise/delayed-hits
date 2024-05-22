@@ -44,6 +44,7 @@ where
 
     let stats = compute_statistics(&request_results_lru);
     println!("average latency (lru): {}", stats.average_latency);
+    let lru_avg_latency = stats.average_latency;
 
     let mut lru_mad = construct_k_way_cache(cache_counts, |_| {
         proj_cache_sim::cache::lru_mad::LRUMinAD::new(cache_capacity, miss_latency)
@@ -53,6 +54,12 @@ where
 
     let stats = compute_statistics(&request_results_lru_mad);
     println!("average latency (lru-mad): {}", stats.average_latency);
+    let lru_mad_avg_latency = stats.average_latency;
+
+    let improvement = (lru_avg_latency - lru_mad_avg_latency) / lru_avg_latency;
+    println!("improvement (%): {}", improvement * 100.0);
+
+    println!("{}, {}", lru_avg_latency, lru_mad_avg_latency);
 }
 
 fn sanity_check_using_example(
