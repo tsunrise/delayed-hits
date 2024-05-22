@@ -9,23 +9,35 @@ This repository contains the code to replicate the result of the paper "Cache wi
 2. Preprocess the pcap files to `events` file by running
 
 ```sh
-cargo run --bin proj-preprocess -- 
-    --ftype traces 
-    --paths <paths_to_pcap_file> 
-    --paths <additional_path>
+cargo run --bin proj-preprocess -- traces 
+    -p <paths_to_pcap_file> 
+    -p <additional_path>
     ... 
+    -i <path_to_the_first_pcap_file_used_in_experiment>
     --output processed.events
 ```
 
-If you need to concat Net Events file:
+### Example
+Suppose we want to process `1.pcap`, `2.pcap`, and `3.pcap` files. We can run either run in one command to get a single `processed.events` file:
 ```sh
-cargo run --bin proj-preprocess -- 
-    --ftype processed-net-events
-    --paths <paths_to_events> 
-    --paths <additional_path>
-    ... 
+cargo run --bin proj-preprocess -- traces 
+    -p 1.pcap 
+    -p 2.pcap 
+    -p 3.pcap 
+    -i 1.pcap
     --output processed.events
 ```
+
+or, we can run multiple commands to get multiple `processed.events` files, and simulation can take all of them in order
+```sh
+cargo run --bin proj-preprocess -- traces -p 1.pcap -i 1.pcap --output processed-1.events
+cargo run --bin proj-preprocess -- traces -p 2.pcap -i 1.pcap --output processed-2.events
+cargo run --bin proj-preprocess -- traces -p 3.pcap -i 1.pcap --output processed-3.events
+```
+
+**Why I need to provide `-i` flag?**
+
+We use `u64` to store the nanosecond timestamp. `u64` is not big enough to store the nanoseconds from the beginning of the year 1970. Instead, we store the nanoseconds from the beginning of the pcap file, which is more than enough. If you provide multiple pcap files, we need to know the starting time of the first pcap file to calculate the timestamp correctly.
 
 3. Run simulation to compare the latency of LRU-MAD with LRU, using the following command
 
@@ -38,6 +50,15 @@ cargo run --bin proj-experiments --release -- network-trace -p processed.events 
 - `latency` is the parameter `L` for the latency of a cache miss, in nanoseconds.
 
 That is, we have `K` caches where each object is distributed to a cache based on the hash of the object. Each cache has a capacity of `C` objects. 
+
+If you have **multiple** `processed.events` files, you can run the following command:
+
+```sh
+cargo run --bin proj-experiments --release -- network-trace -p processed-1.events
+                                                            -p processed-2.events
+                                                            -p processed-3.events
+                                                            -k <number-of-caches> -c <cache-capacity> -l <latency>
+```
 
 You can get more information about the parameters by running
 

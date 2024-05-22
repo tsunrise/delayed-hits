@@ -1,4 +1,4 @@
-use std::io::Read;
+use std::{io::Read, time::Duration};
 
 use etherparse::{NetSlice, SlicedPacket, TransportSlice};
 use pcap_file::pcap::PcapReader;
@@ -36,25 +36,30 @@ pub fn read_flow_from_pcap_data(data: &[u8]) -> Option<Flow> {
     })
 }
 
-pub fn read_pcap_events<R: Read>(reader: R) -> Vec<RequestEvent<Flow>> {
+pub fn read_init_time<R: Read>(reader: R) -> Duration {
+    let mut pcap_reader = PcapReader::new(reader).unwrap();
+    let first_pkt = pcap_reader.next_packet().unwrap().unwrap();
+    first_pkt.timestamp
+}
+
+pub fn read_pcap_events<R: Read>(reader: R, init_time: Duration) -> Vec<RequestEvent<Flow>> {
     let mut pcap_reader = PcapReader::new(reader).unwrap();
 
     let mut events = Vec::new();
     while let Some(pkt) = pcap_reader.next_packet() {
         if let Ok(pkt) = pkt {
             if let Some(flow) = read_flow_from_pcap_data(&pkt.data) {
-                events.push((flow, pkt.timestamp.as_nanos()));
+                events.push((flow, pkt.timestamp));
             }
         }
     }
 
     // initial timestamp is now always 0
-    let init_timestamp = events.first().map(|(_, timestamp)| *timestamp).unwrap_or(0);
     events
         .iter()
         .map(|(flow, timestamp)| RequestEvent {
             key: flow.clone(),
-            timestamp: (timestamp - init_timestamp) as u64,
+            timestamp: (*timestamp - init_time).as_nanos() as u64,
         })
         .collect()
 }
@@ -69,7 +74,7 @@ mod tests {
         let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
         path.push("test-resources/test.pcap");
         let file = std::fs::File::open(path).unwrap();
-        let events = read_pcap_events(file);
+        let events = read_pcap_events(file, Duration::from_secs(0));
         assert_eq!(
             events[0].key,
             Flow {

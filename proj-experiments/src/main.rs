@@ -3,20 +3,44 @@ use proj_cache_sim::{
     cache::{construct_k_way_cache, lru::LRU, ObjectId},
     simulator::{compute_statistics, run_simulation},
 };
-use proj_models::RequestEvents;
+use proj_models::{network::Flow, RequestEvent, RequestEvents};
 
 mod data;
 
-fn run_experiment<K>(
-    events: RequestEvents<K>,
-    cache_counts: usize,
-    cache_capacity: usize,
-    miss_latency: u64,
-) where
+pub trait EventsIterable<K> {
+    fn iter_events(&self) -> impl Iterator<Item = RequestEvent<K>> + '_;
+
+    fn iter_simulation_events(&self) -> impl Iterator<Item = (K, u64)> + '_ {
+        self.iter_events().map(|event| (event.key, event.timestamp))
+    }
+}
+
+impl<K: Clone> EventsIterable<K> for RequestEvents<K> {
+    fn iter_events(&self) -> impl Iterator<Item = RequestEvent<K>> + '_ {
+        self.events.iter().cloned()
+    }
+}
+
+struct NetworkTraceEventsLoader<'a> {
+    paths: &'a [String],
+}
+
+impl<'a> EventsIterable<Flow> for NetworkTraceEventsLoader<'a> {
+    fn iter_events(&self) -> impl Iterator<Item = RequestEvent<Flow>> + '_ {
+        self.paths
+            .iter()
+            .flat_map(|path| data::load_network_trace_events(path).events)
+    }
+}
+
+fn run_experiment<K, E>(events: E, cache_counts: usize, cache_capacity: usize, miss_latency: u64)
+where
     K: ObjectId,
+    E: EventsIterable<K>,
 {
     let mut lru = construct_k_way_cache(cache_counts, |_| LRU::new(cache_capacity));
-    let request_results_lru = run_simulation(&mut lru, events.to_simulation_events(), miss_latency);
+    let request_results_lru =
+        run_simulation(&mut lru, events.iter_simulation_events(), miss_latency);
 
     let stats = compute_statistics(&request_results_lru);
     println!("average latency (lru): {}", stats.average_latency);
@@ -25,7 +49,7 @@ fn run_experiment<K>(
         proj_cache_sim::cache::lru_mad::LRUMinAD::new(cache_capacity, miss_latency)
     });
     let request_results_lru_mad =
-        run_simulation(&mut lru_mad, events.to_simulation_events(), miss_latency);
+        run_simulation(&mut lru_mad, events.iter_simulation_events(), miss_latency);
 
     let stats = compute_statistics(&request_results_lru_mad);
     println!("average latency (lru-mad): {}", stats.average_latency);
@@ -42,19 +66,24 @@ fn sanity_check_using_example(
 }
 
 fn experiment_using_trace(
-    trace_events_path: &str,
+    trace_events_path: &[String],
     cache_counts: usize,
     cache_capacity: usize,
     miss_latency: u64,
 ) {
-    let trace_events = data::load_network_trace_events(trace_events_path);
+    let trace_events = NetworkTraceEventsLoader {
+        paths: trace_events_path,
+    };
     run_experiment(trace_events, cache_counts, cache_capacity, miss_latency);
 }
 
-fn analyze_network_trace(trace_events_path: &str) {
-    let trace_events = data::load_network_trace_events(trace_events_path);
-    let max_active_objects =
-        proj_cache_sim::heuristics::maximum_active_objects(&trace_events.events);
+fn analyze_network_trace(trace_events_path: &[String]) {
+    let trace_events = NetworkTraceEventsLoader {
+        paths: trace_events_path,
+    }
+    .iter_events()
+    .collect::<Vec<_>>();
+    let max_active_objects = proj_cache_sim::heuristics::maximum_active_objects(&trace_events);
     println!("max active objects: {}", max_active_objects);
     let ratios = [0.05];
     for ratio in ratios.iter() {
@@ -80,7 +109,7 @@ enum Experiment {
     },
     NetworkTrace {
         #[clap(long, short = 'p')]
-        events_path: String,
+        events_path: Vec<String>,
         #[clap(long, short = 'k')]
         cache_counts: usize,
         #[clap(long, short = 'c')]
@@ -90,7 +119,7 @@ enum Experiment {
     },
     NetworkTraceAnalysis {
         #[clap(long, short = 'p')]
-        events_path: String,
+        events_path: Vec<String>,
     },
 }
 

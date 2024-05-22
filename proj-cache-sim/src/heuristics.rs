@@ -9,8 +9,16 @@ use crate::cache::ObjectId;
 /// an interval from the first access to the last access of an object.
 pub fn maximum_active_objects<T: ObjectId>(events: &[RequestEvent<T>]) -> usize {
     let mut last_access = AHashMap::new();
+    let mut last_event_timestamp = 0;
     for event in events {
         last_access.insert(event.key.clone(), event.timestamp);
+        if event.timestamp < last_event_timestamp {
+            panic!(
+                "events are not in order: the event of key {:?} at timestamp {} is earlier than the last event at timestamp {}",
+                event.key, event.timestamp, last_event_timestamp
+            );
+        }
+        last_event_timestamp = event.timestamp;
     }
     let mut active_objects = AHashSet::new();
     let mut max_active_objects = 0;

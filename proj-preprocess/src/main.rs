@@ -4,7 +4,7 @@ mod pcap_parser;
 
 use std::io::Write;
 
-use clap::{Parser, ValueEnum};
+use clap::{Parser, Subcommand};
 use proj_models::{network::Flow, RequestEvent};
 use serde::Serialize;
 
@@ -28,11 +28,20 @@ fn sort_or_check_timestamps<K>(events: &mut Vec<RequestEvent<K>>, run_sort: bool
 
 /// - `paths`: paths to the pcap files
 /// - `run_sort`: whether to sort the events by timestamp. If `false`, you assume the paths are already sorted by timestamp.
-fn read_pcap_traces_from_multiple_files(paths: &[&str], run_sort: bool) -> Vec<RequestEvent<Flow>> {
+/// - `initial_path`: the path to the initial pcap file, used to calculate the timestamp offset.
+fn read_pcap_traces_from_multiple_files(
+    paths: &[&str],
+    run_sort: bool,
+    initial_path: &str,
+) -> Vec<RequestEvent<Flow>> {
     let mut events = Vec::new();
+    let init_time = {
+        let file = std::fs::File::open(initial_path).unwrap();
+        pcap_parser::read_init_time(file)
+    };
     for path in paths {
         let file = std::fs::File::open(path).unwrap();
-        let mut events_from_file = pcap_parser::read_pcap_events(file);
+        let mut events_from_file = pcap_parser::read_pcap_events(file, init_time);
         events.append(&mut events_from_file);
     }
     sort_or_check_timestamps(&mut events, run_sort);
@@ -60,45 +69,73 @@ where
     writer.flush().unwrap();
 }
 
-#[derive(ValueEnum, Debug, Clone)]
-enum RunType {
-    Example,
-    Traces,
-    ProcessedNetEvents,
+#[derive(Debug, Clone, Subcommand)]
+enum SubArgs {
+    Example {
+        #[clap(short, long)]
+        path: String,
+        #[clap(short, long)]
+        output: String,
+    },
+    Traces {
+        #[clap(
+            short,
+            long,
+            help = "The paths to the pcap files. The first in paths is not necessarily the first pcap file used by the experiment."
+        )]
+        paths: Vec<String>,
+        #[clap(short, long)]
+        output: String,
+        #[clap(short, long, help = "Let us sort the events by timestamp.")]
+        sort: bool,
+        #[clap(
+            short,
+            long,
+            help = "The path to the first pcap file used by the experiment. Used to calculate the timestamp offset."
+        )]
+        initial_path: String,
+    },
+    ProcessedNetEvents {
+        #[clap(short, long)]
+        paths: Vec<String>,
+        #[clap(short, long)]
+        output: String,
+        #[clap(short, long)]
+        sort: bool,
+    },
 }
 
-#[derive(Parser, Debug)]
-#[command(about = "Preprocess the example or traces.")]
+#[derive(Debug, Clone, Parser)]
 struct Args {
-    #[arg(value_enum, short, long)]
-    ftype: RunType,
-    #[arg(short, long)]
-    paths: Vec<String>,
-    #[arg(short, long)]
-    output: String,
-    #[arg(short, long)]
-    sort: bool,
+    #[clap(subcommand)]
+    args: SubArgs,
 }
 
 fn main() {
-    // <binary> --ftype example --paths path/to/example --output path/to/output
-    // <binary> --ftype traces --paths path/to/traces --output path/to/output
-
     let args = Args::parse();
-    let paths = args.paths.iter().map(|s| s.as_str()).collect::<Vec<_>>();
-    match args.ftype {
-        RunType::Example => {
-            assert!(args.paths.len() == 1);
-            let events = read_example_events_from_file(paths[0]);
-            write_events_to_binary_file(&events, &args.output);
+    match args.args {
+        SubArgs::Example { path, output } => {
+            let events = read_example_events_from_file(&path);
+            write_events_to_binary_file(&events, &output);
         }
-        RunType::Traces => {
-            let events = read_pcap_traces_from_multiple_files(&paths, args.sort);
-            write_events_to_binary_file(&events, &args.output);
+        SubArgs::Traces {
+            paths,
+            output,
+            sort,
+            initial_path,
+        } => {
+            let paths = paths.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+            let events = read_pcap_traces_from_multiple_files(&paths, sort, &initial_path);
+            write_events_to_binary_file(&events, &output);
         }
-        RunType::ProcessedNetEvents => {
-            let events = concat_net_events(&paths, args.sort);
-            write_events_to_binary_file(&events, &args.output);
+        SubArgs::ProcessedNetEvents {
+            paths,
+            output,
+            sort,
+        } => {
+            let paths = paths.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+            let events = concat_net_events(&paths, sort);
+            write_events_to_binary_file(&events, &output);
         }
     }
 }

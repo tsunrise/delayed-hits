@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, iter::Peekable};
+use std::{collections::VecDeque, iter::Peekable, panic};
 
 use ahash::AHashMap;
 
@@ -39,10 +39,9 @@ where
 
     let next_request = requests.peek().map(|(key, timestamp)| {
         if timestamp < last_request_timestamp {
-            (key, *last_request_timestamp)
-        } else {
-            (key, *timestamp)
+            panic!("events are not in order: the event of key {:?} at timestamp {} is earlier than the last request at timestamp {}", key, timestamp, last_request_timestamp);
         }
+        (key, *timestamp)
     });
 
     let next_completion = future_completion.front();
