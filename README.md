@@ -9,7 +9,7 @@ This repository contains the code to replicate the result of the paper "Cache wi
 2. Preprocess the pcap files to `events` file by running
 
 ```sh
-cargo run --bin proj-preprocess -- traces 
+cargo run --release --bin proj-preprocess -- traces 
     -p <paths_to_pcap_file> 
     -p <additional_path>
     ... 
@@ -20,7 +20,7 @@ cargo run --bin proj-preprocess -- traces
 ### Example
 Suppose we want to process `1.pcap`, `2.pcap`, and `3.pcap` files. We can run either run in one command to get a single `processed.events` file:
 ```sh
-cargo run --bin proj-preprocess -- traces 
+cargo run --release --bin proj-preprocess -- traces 
     -p 1.pcap 
     -p 2.pcap 
     -p 3.pcap 
@@ -30,9 +30,9 @@ cargo run --bin proj-preprocess -- traces
 
 or, we can run multiple commands to get multiple `processed.events` files, and simulation can take all of them in order
 ```sh
-cargo run --bin proj-preprocess -- traces -p 1.pcap -i 1.pcap --output processed-1.events
-cargo run --bin proj-preprocess -- traces -p 2.pcap -i 1.pcap --output processed-2.events
-cargo run --bin proj-preprocess -- traces -p 3.pcap -i 1.pcap --output processed-3.events
+cargo run --release --bin proj-preprocess -- traces -p 1.pcap -i 1.pcap --output processed-1.events
+cargo run --release --bin proj-preprocess -- traces -p 2.pcap -i 1.pcap --output processed-2.events
+cargo run --release --bin proj-preprocess -- traces -p 3.pcap -i 1.pcap --output processed-3.events
 ```
 
 **Why I need to provide `-i` flag?**
