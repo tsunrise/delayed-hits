@@ -43,6 +43,7 @@ where
         run_simulation(&mut lru, events.iter_simulation_events(), miss_latency);
 
     let stats = compute_statistics(&request_results_lru);
+    println!("total latency (lru): {}", stats.total_latency);
     println!("average latency (lru): {}", stats.average_latency);
     let lru_avg_latency = stats.average_latency;
 
@@ -53,6 +54,7 @@ where
         run_simulation(&mut lru_mad, events.iter_simulation_events(), miss_latency);
 
     let stats = compute_statistics(&request_results_lru_mad);
+    println!("total latency (lru-mad): {}", stats.total_latency);
     println!("average latency (lru-mad): {}", stats.average_latency);
     let lru_mad_avg_latency = stats.average_latency;
 

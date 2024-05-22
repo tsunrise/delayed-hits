@@ -5,6 +5,10 @@ use crate::types::Nanosecond;
 use super::{Cache, ObjectId};
 
 struct ObjectMetaData {
+    /// Whether the metadata is not updated yet
+    /// Credit: we initially do not include this flag and thus our MAD has subpar performance. We referenced original authors' C++ code
+    /// and discovered this bug. Refernece: https://github.com/cmu-snap/Delayed-Hits/blob/4f21d4c5bea26262715b88c97cd66ece7cdb965e/caching/src/cache_lru_aggdelay.cpp#L35
+    new: bool,
     /// Number of miss windows this object has experienced.
     num_windows: usize,
     /// The total delay this object has experienced.
@@ -19,6 +23,7 @@ struct ObjectMetaData {
 impl ObjectMetaData {
     fn new() -> Self {
         Self {
+            new: true,
             num_windows: 0,
             cumulative_delay: 0,
             window_start_timestamp: 0,
@@ -29,15 +34,16 @@ impl ObjectMetaData {
     fn update(&mut self, timestamp: Nanosecond, estimated_miss_latency: Nanosecond) {
         let tssw = timestamp - self.window_start_timestamp;
 
-        if tssw >= estimated_miss_latency {
+        if self.new || tssw >= estimated_miss_latency {
             self.num_windows += 1;
-            self.cumulative_delay += estimated_miss_latency;
             self.window_start_timestamp = timestamp;
+            self.cumulative_delay += estimated_miss_latency;
         } else {
             self.cumulative_delay += estimated_miss_latency - tssw;
         }
 
         self.last_access_timestamp = timestamp;
+        self.new = false;
     }
 
     fn score(&self, timestamp: Nanosecond) -> f64 {
