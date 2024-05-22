@@ -145,7 +145,7 @@ where
 
 #[derive(Debug, Clone)]
 pub struct Statistics {
-    pub total_latency: Nanosecond,
+    pub total_latency: u128,
     pub average_latency: f64,
     pub latencies_by_timestamp_sorted: Vec<(Nanosecond, Nanosecond)>,
 }
@@ -162,9 +162,9 @@ pub fn compute_statistics<K>(result: &[RequestResult<K>]) -> Statistics {
         .collect::<Vec<_>>();
     latencies_by_timestamp_sorted.sort_by_key(|&(timestamp, _)| timestamp);
 
-    let total_latency: Nanosecond = latencies_by_timestamp_sorted
+    let total_latency: u128 = latencies_by_timestamp_sorted
         .iter()
-        .map(|(_, latency)| *latency)
+        .map(|(_, latency)| *latency as u128)
         .sum();
 
     let average_latency = total_latency as f64 / latencies_by_timestamp_sorted.len() as f64;
