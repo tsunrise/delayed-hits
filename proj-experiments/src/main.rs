@@ -60,8 +60,8 @@ where
     println!("improvement (%): {}", improvement * 100.0);
 
     println!(
-        "CSV: {}, {}, {}, {}",
-        cache_counts, cache_capacity, lru_avg_latency, lru_mad_avg_latency
+        "CSV: {}, {}, {}, {}, {}",
+        cache_counts, cache_capacity, miss_latency, lru_avg_latency, lru_mad_avg_latency
     );
 }
 
