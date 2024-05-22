@@ -1,4 +1,4 @@
-use std::{collections::VecDeque, iter::Peekable, panic};
+use std::{collections::VecDeque, iter::Peekable};
 
 use ahash::AHashMap;
 
@@ -37,12 +37,24 @@ where
     // for completion, just pop it from the queue.
     // if there is no request or completion, return None.
 
-    let next_request = requests.peek().map(|(key, timestamp)| {
-        if timestamp < last_request_timestamp {
-            panic!("events are not in order: the event of key {:?} at timestamp {} is earlier than the last request at timestamp {}", key, timestamp, last_request_timestamp);
+    let next_request;
+    loop {
+        match requests.peek() {
+            Some((key, timestamp)) => {
+                if timestamp < last_request_timestamp {
+                    verbose!("Warning: event not in order is ignored: the event of key {:?} at timestamp {} is earlier than the last request at timestamp {}", key, timestamp, last_request_timestamp);
+                    requests.next();
+                } else {
+                    next_request = Some((key.clone(), *timestamp));
+                    break;
+                }
+            }
+            None => {
+                next_request = None;
+                break;
+            }
         }
-        (key, *timestamp)
-    });
+    }
 
     let next_completion = future_completion.front();
 
