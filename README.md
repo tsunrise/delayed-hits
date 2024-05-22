@@ -69,5 +69,7 @@ cargo run --bin proj-experiments --release -- network-trace --help
 You might need to estimate cache capacity using the maximum number of active objects. You can use the following command to get the maximum number of active objects.
 
 ```sh
-cargo run --bin proj-experiments --release -- network-trace-analysis -p <processed-events>
+cargo run --bin proj-experiments --release -- network-trace-analysis -p processed-1.events
+                                                                     -p processed-2.events
+                                                                     ...
 ```
