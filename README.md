@@ -60,6 +60,18 @@ cargo run --bin proj-experiments --release -- network-trace -p processed-1.event
                                                             -k <number-of-caches> -c <cache-capacity> -l <latency>
 ```
 
+Parallel execution on different latencies are supported. You can run the following command to run the simulation on different latencies. Be mindful of memory usage.
+
+```sh
+cargo run --bin proj-experiments --release -- network-trace -p processed-1.events
+                                                            -p processed-2.events
+                                                            -p processed-3.events
+                                                            -k <number-of-caches> -c <cache-capacity> 
+                                                            -l <latency-experiment-1>
+                                                            -l <latency-experiment-2>
+                                                            ...
+```
+
 You can get more information about the parameters by running
 
 ```sh
