@@ -5,18 +5,22 @@ use std::io::{BufRead, Read};
 
 use proj_models::RequestEvent;
 
-fn line_to_event(line: &str) -> Option<RequestEvent<u32>> {
+fn line_to_event(line: &str, timestamp: usize) -> Option<RequestEvent<u32>> {
     let mut parts = line.split(';');
-    let timestamp = parts.next()?.parse().ok()?;
+    let _ = parts.next()?;
     let key = parts.next()?.parse().ok()?;
-    Some(RequestEvent { key, timestamp })
+    Some(RequestEvent {
+        key,
+        timestamp: timestamp as u64,
+    })
 }
 
 pub fn read_example_events<R: Read>(reader: R) -> Vec<RequestEvent<u32>> {
     std::io::BufReader::new(reader)
         .lines()
-        .filter_map(|line| line.ok())
-        .filter_map(|line| line_to_event(&line))
+        .enumerate()
+        .filter_map(|line| line.1.ok().map(|l| (line.0, l)))
+        .filter_map(|(timestamp, line)| line_to_event(&line, timestamp))
         .collect()
 }
 
