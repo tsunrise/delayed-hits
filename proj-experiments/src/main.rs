@@ -1,4 +1,6 @@
+use derivative::Derivative;
 use rayon::prelude::*;
+use serde::de::DeserializeOwned;
 use std::fmt::Display;
 
 use clap::{Parser, Subcommand};
@@ -6,7 +8,7 @@ use proj_cache_sim::{
     cache::{construct_k_way_cache, lru::LRU, ObjectId},
     simulator::{compute_statistics, run_simulation},
 };
-use proj_models::{network::Flow, RequestEvent, RequestEvents};
+use proj_models::{network::Flow, storage::BlockId, RequestEvent, RequestEvents};
 
 mod data;
 
@@ -24,16 +26,30 @@ impl<K: Clone> EventsIterable<K> for RequestEvents<K> {
     }
 }
 
-#[derive(Debug, Clone, Copy)]
-struct NetworkTraceEventsLoader<'a> {
+#[derive(Debug, Derivative)]
+#[derivative(Copy(bound = ""), Clone(bound = ""))]
+struct EventsLoader<'a, T> {
     paths: &'a [String],
+    _phantom: std::marker::PhantomData<T>,
 }
 
-impl<'a> EventsIterable<Flow> for NetworkTraceEventsLoader<'a> {
-    fn iter_events(&self) -> impl Iterator<Item = RequestEvent<Flow>> + '_ {
+impl<'a, T> EventsLoader<'a, T> {
+    fn new(paths: &'a [String]) -> Self {
+        Self {
+            paths,
+            _phantom: std::marker::PhantomData,
+        }
+    }
+}
+
+impl<'a, T> EventsIterable<T> for EventsLoader<'a, T>
+where
+    T: DeserializeOwned,
+{
+    fn iter_events(&self) -> impl Iterator<Item = RequestEvent<T>> + '_ {
         self.paths
             .iter()
-            .flat_map(|path| data::load_network_trace_events(path).events)
+            .flat_map(|path| data::load_events(path).events)
     }
 }
 
@@ -127,15 +143,15 @@ fn sanity_check_using_example(
     run_experiment(example_events, cache_counts, cache_capacity, miss_latency);
 }
 
-fn experiment_using_trace(
+fn experiment_using_events_path<T>(
     trace_events_path: &[String],
     cache_counts: usize,
     cache_capacity: usize,
     miss_latency: &[u64],
-) {
-    let trace_events = NetworkTraceEventsLoader {
-        paths: trace_events_path,
-    };
+) where
+    T: ObjectId + DeserializeOwned + Send + Sync,
+{
+    let trace_events = EventsLoader::<T>::new(trace_events_path);
     // run_experiment(trace_events, cache_counts, cache_capacity, miss_latency);
     let result = miss_latency
         .par_iter()
@@ -150,12 +166,13 @@ fn experiment_using_trace(
     }
 }
 
-fn analyze_network_trace(trace_events_path: &[String]) {
-    let trace_events = NetworkTraceEventsLoader {
-        paths: trace_events_path,
-    }
-    .iter_events()
-    .collect::<Vec<_>>();
+fn analyze_events<T>(trace_events_path: &[String])
+where
+    T: ObjectId + DeserializeOwned,
+{
+    let trace_events = EventsLoader::<T>::new(trace_events_path)
+        .iter_events()
+        .collect::<Vec<_>>();
     let max_active_objects = proj_cache_sim::heuristics::maximum_active_objects(&trace_events);
     println!("max active objects: {}", max_active_objects);
     let ratios = [0.05];
@@ -187,10 +204,24 @@ enum Experiment {
         cache_counts: usize,
         #[clap(long, short = 'c')]
         cache_capacity: usize,
-        #[clap(long, short = 'l')]
+        #[clap(long, short = 'l', help = "miss latency in nanoseconds")]
         miss_latency: Vec<u64>,
     },
     NetworkTraceAnalysis {
+        #[clap(long, short = 'p')]
+        events_path: Vec<String>,
+    },
+    StorageTrace {
+        #[clap(long, short = 'p')]
+        events_path: Vec<String>,
+        #[clap(long, short = 'k')]
+        cache_counts: usize,
+        #[clap(long, short = 'c')]
+        cache_capacity: usize,
+        #[clap(long, short = 'l', help = "miss latency in microseconds")]
+        miss_latency: Vec<u64>,
+    },
+    StorageTraceAnalysis {
         #[clap(long, short = 'p')]
         events_path: Vec<String>,
     },
@@ -220,10 +251,31 @@ fn main() {
             cache_capacity,
             miss_latency,
         } => {
-            experiment_using_trace(&events_path, cache_counts, cache_capacity, &miss_latency);
+            experiment_using_events_path::<Flow>(
+                &events_path,
+                cache_counts,
+                cache_capacity,
+                &miss_latency,
+            );
+        }
+        Experiment::StorageTrace {
+            events_path,
+            cache_counts,
+            cache_capacity,
+            miss_latency,
+        } => {
+            experiment_using_events_path::<BlockId>(
+                &events_path,
+                cache_counts,
+                cache_capacity,
+                &miss_latency,
+            );
         }
         Experiment::NetworkTraceAnalysis { events_path } => {
-            analyze_network_trace(&events_path);
+            analyze_events::<Flow>(&events_path);
+        }
+        Experiment::StorageTraceAnalysis { events_path } => {
+            analyze_events::<BlockId>(&events_path);
         }
     }
 }

@@ -1,4 +1,5 @@
-use proj_models::{network::Flow, RequestEvents};
+use proj_models::RequestEvents;
+use serde::de::DeserializeOwned;
 
 pub fn load_example_events(path: &str) -> RequestEvents<u32> {
     let file = std::fs::File::open(path).unwrap();
@@ -6,9 +7,11 @@ pub fn load_example_events(path: &str) -> RequestEvents<u32> {
     bincode::deserialize_from(reader).unwrap()
 }
 
-#[allow(dead_code)]
 /// Load network traces from a preprocessed events file.
-pub fn load_network_trace_events(path: &str) -> RequestEvents<Flow> {
+pub fn load_events<T>(path: &str) -> RequestEvents<T>
+where
+    T: DeserializeOwned,
+{
     let file = std::fs::File::open(path).unwrap();
     let reader = std::io::BufReader::new(file);
     bincode::deserialize_from(reader).unwrap()

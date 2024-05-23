@@ -1,3 +1,4 @@
+mod downsample;
 mod example_parser;
 mod msn_storage_parser;
 mod pcap_parser;
@@ -5,7 +6,7 @@ mod pcap_parser;
 use std::io::Write;
 
 use clap::{Parser, Subcommand};
-use proj_models::{network::Flow, RequestEvent};
+use proj_models::{network::Flow, storage::BlockId, RequestEvent};
 use serde::Serialize;
 
 fn read_example_events_from_file(path: &str) -> Vec<RequestEvent<u32>> {
@@ -42,6 +43,20 @@ fn read_pcap_traces_from_multiple_files(
     for path in paths {
         let file = std::fs::File::open(path).unwrap();
         let mut events_from_file = pcap_parser::read_pcap_events(file, init_time);
+        events.append(&mut events_from_file);
+    }
+    sort_or_check_timestamps(&mut events, run_sort);
+    events
+}
+
+fn read_storage_traces_from_multiple_files(
+    paths: &[&str],
+    run_sort: bool,
+) -> Vec<RequestEvent<BlockId>> {
+    let mut events = Vec::new();
+    for path in paths {
+        let file = std::fs::File::open(path).unwrap();
+        let mut events_from_file = msn_storage_parser::read_msn_storage_events(file);
         events.append(&mut events_from_file);
     }
     sort_or_check_timestamps(&mut events, run_sort);
@@ -103,6 +118,22 @@ enum SubArgs {
         #[clap(short, long)]
         sort: bool,
     },
+    StorageTraces {
+        #[clap(short, long, help = "The paths to the msn storage traces.")]
+        paths: Vec<String>,
+        #[clap(short, long)]
+        output: String,
+        #[clap(short, long)]
+        sort: bool,
+    },
+    DownsampleStorageEvents {
+        #[clap(short, long)]
+        path: String,
+        #[clap(short, long)]
+        output: String,
+        #[clap(short, long)]
+        constant_arrival: bool,
+    },
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -136,6 +167,25 @@ fn main() {
             let paths = paths.iter().map(|s| s.as_str()).collect::<Vec<_>>();
             let events = concat_net_events(&paths, sort);
             write_events_to_binary_file(&events, &output);
+        }
+        SubArgs::StorageTraces {
+            paths,
+            output,
+            sort,
+        } => {
+            let paths = paths.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+            let events = read_storage_traces_from_multiple_files(&paths, sort);
+            write_events_to_binary_file(&events, &output);
+        }
+        SubArgs::DownsampleStorageEvents {
+            path,
+            output,
+            constant_arrival,
+        } => {
+            let file = std::fs::File::open(path).unwrap();
+            let events: Vec<RequestEvent<BlockId>> = bincode::deserialize_from(file).unwrap();
+            let downsampled_events = downsample::downsample_events(events, constant_arrival);
+            write_events_to_binary_file(&downsampled_events, &output);
         }
     }
 }
