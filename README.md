@@ -85,3 +85,20 @@ cargo run --bin proj-experiments --release -- network-trace-analysis -p processe
                                                                      -p processed-2.events
                                                                      ...
 ```
+
+## Replicate LRU-MAD latency on Storage trace
+
+1. Download the MSN storage file server from <http://iotta.snia.org/traces/block-io/158?n=10&page=2>
+
+2. Preprocess the csv files to `events` file by running
+
+```sh
+cargo run --bin proj-preprocess --release -- storage-traces -p data/MSNStorageCFS/Traces/CFS.2008-03-10.01-06.trace.csv.csv -o data/storage-events/MSNFS.meta.events
+```
+
+3. Run simulation to compare the latency of LRU-MAD with LRU, using the following command
+
+```sh
+cargo run --bin proj-experiments --release -- storage-trace -p data/storage-events/MSNFS.meta.events -k <number-of-caches> -c <cache-capacity> -l <latency-in-microsecond>
+```
+
