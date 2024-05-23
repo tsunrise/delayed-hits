@@ -11,3 +11,4 @@ clap = { version = "4.5.4", features = ["derive"] }
 clap_derive = "4.5.4"
 proj-cache-sim = { version = "0.1.0", path = "../proj-cache-sim" }
 proj-models = { version = "0.1.0", path = "../proj-models" }
+rayon = "1.10.0"

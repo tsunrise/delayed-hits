@@ -1,3 +1,6 @@
+use rayon::prelude::*;
+use std::fmt::Display;
+
 use clap::{Parser, Subcommand};
 use proj_cache_sim::{
     cache::{construct_k_way_cache, lru::LRU, ObjectId},
@@ -21,6 +24,7 @@ impl<K: Clone> EventsIterable<K> for RequestEvents<K> {
     }
 }
 
+#[derive(Debug, Clone, Copy)]
 struct NetworkTraceEventsLoader<'a> {
     paths: &'a [String],
 }
@@ -33,7 +37,52 @@ impl<'a> EventsIterable<Flow> for NetworkTraceEventsLoader<'a> {
     }
 }
 
-fn run_experiment<K, E>(events: E, cache_counts: usize, cache_capacity: usize, miss_latency: u64)
+#[derive(Debug, Clone)]
+struct ExperimentResult {
+    total_latency_lru: u128,
+    average_latency_lru: f64,
+    total_latency_lru_mad: u128,
+    average_latency_lru_mad: f64,
+    improvement: f64,
+    cache_counts: usize,
+    cache_capacity: usize,
+    miss_latency: u64,
+}
+
+impl Display for ExperimentResult {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(
+            f,
+            "k: {}, c: {}, miss_latency: {}\n\
+            total latency (lru): {}\n\
+            average latency (lru): {}\n\
+            total latency (lru-mad): {}\n\
+            average latency (lru-mad): {}\n\
+            improvement (%): {}\n\
+            CSV: {}, {}, {}, {}, {}",
+            self.cache_counts,
+            self.cache_capacity,
+            self.miss_latency,
+            self.total_latency_lru,
+            self.average_latency_lru,
+            self.total_latency_lru_mad,
+            self.average_latency_lru_mad,
+            self.improvement * 100.0,
+            self.cache_counts,
+            self.cache_capacity,
+            self.miss_latency,
+            self.average_latency_lru,
+            self.average_latency_lru_mad
+        )
+    }
+}
+
+fn run_experiment<K, E>(
+    events: E,
+    cache_counts: usize,
+    cache_capacity: usize,
+    miss_latency: u64,
+) -> ExperimentResult
 where
     K: ObjectId,
     E: EventsIterable<K>,
@@ -43,8 +92,6 @@ where
         run_simulation(&mut lru, events.iter_simulation_events(), miss_latency);
 
     let stats = compute_statistics(&request_results_lru);
-    println!("total latency (lru): {}", stats.total_latency);
-    println!("average latency (lru): {}", stats.average_latency);
     let lru_avg_latency = stats.average_latency;
 
     let mut lru_mad = construct_k_way_cache(cache_counts, |_| {
@@ -54,17 +101,20 @@ where
         run_simulation(&mut lru_mad, events.iter_simulation_events(), miss_latency);
 
     let stats = compute_statistics(&request_results_lru_mad);
-    println!("total latency (lru-mad): {}", stats.total_latency);
-    println!("average latency (lru-mad): {}", stats.average_latency);
     let lru_mad_avg_latency = stats.average_latency;
 
     let improvement = (lru_avg_latency - lru_mad_avg_latency) / lru_avg_latency;
-    println!("improvement (%): {}", improvement * 100.0);
 
-    println!(
-        "CSV: {}, {}, {}, {}, {}",
-        cache_counts, cache_capacity, miss_latency, lru_avg_latency, lru_mad_avg_latency
-    );
+    ExperimentResult {
+        total_latency_lru: stats.total_latency,
+        average_latency_lru: lru_avg_latency,
+        total_latency_lru_mad: stats.total_latency,
+        average_latency_lru_mad: lru_mad_avg_latency,
+        improvement,
+        cache_counts,
+        cache_capacity,
+        miss_latency,
+    }
 }
 
 fn sanity_check_using_example(
@@ -81,12 +131,23 @@ fn experiment_using_trace(
     trace_events_path: &[String],
     cache_counts: usize,
     cache_capacity: usize,
-    miss_latency: u64,
+    miss_latency: &[u64],
 ) {
     let trace_events = NetworkTraceEventsLoader {
         paths: trace_events_path,
     };
-    run_experiment(trace_events, cache_counts, cache_capacity, miss_latency);
+    // run_experiment(trace_events, cache_counts, cache_capacity, miss_latency);
+    let result = miss_latency
+        .par_iter()
+        .map(|&miss_latency| {
+            run_experiment(trace_events, cache_counts, cache_capacity, miss_latency)
+        })
+        .collect::<Vec<_>>();
+
+    for r in result {
+        println!("{}", r);
+        println!()
+    }
 }
 
 fn analyze_network_trace(trace_events_path: &[String]) {
@@ -127,7 +188,7 @@ enum Experiment {
         #[clap(long, short = 'c')]
         cache_capacity: usize,
         #[clap(long, short = 'l')]
-        miss_latency: u64,
+        miss_latency: Vec<u64>,
     },
     NetworkTraceAnalysis {
         #[clap(long, short = 'p')]
@@ -159,7 +220,7 @@ fn main() {
             cache_capacity,
             miss_latency,
         } => {
-            experiment_using_trace(&events_path, cache_counts, cache_capacity, miss_latency);
+            experiment_using_trace(&events_path, cache_counts, cache_capacity, &miss_latency);
         }
         Experiment::NetworkTraceAnalysis { events_path } => {
             analyze_network_trace(&events_path);
