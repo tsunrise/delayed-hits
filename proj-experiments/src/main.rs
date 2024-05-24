@@ -97,11 +97,18 @@ impl Display for ExperimentResult {
     }
 }
 
+/// Run an experiment with the given parameters.
+/// - `events`: the events to simulate
+/// - `cache_counts`: the number of caches in the cache hierarchy
+/// - `cache_capacity`: the capacity of each cache
+/// - `miss_latency`: the latency of a cache miss
+/// - `warmup`: the number of requests to warm up the cache. The warmup requests are not included in the statistics.
 fn run_experiment<K, E>(
     events: E,
     cache_counts: usize,
     cache_capacity: usize,
     miss_latency: u64,
+    warmup: usize,
 ) -> ExperimentResult
 where
     K: ObjectId,
@@ -120,7 +127,7 @@ where
     let request_results_lru_mad =
         run_simulation(&mut lru_mad, events.iter_simulation_events(), miss_latency);
 
-    let stats = compute_statistics(&request_results_lru_mad);
+    let stats = compute_statistics(&request_results_lru_mad[warmup..]);
     let lru_mad_avg_latency = stats.average_latency;
 
     let improvement = (lru_avg_latency - lru_mad_avg_latency) / lru_avg_latency;
@@ -144,7 +151,13 @@ fn sanity_check_using_example(
     miss_latency: u64,
 ) {
     let example_events = data::load_example_events(example_path);
-    run_experiment(example_events, cache_counts, cache_capacity, miss_latency);
+    run_experiment(
+        example_events,
+        cache_counts,
+        cache_capacity,
+        miss_latency,
+        0,
+    );
 }
 
 fn experiment_using_events_path<T>(
@@ -152,6 +165,7 @@ fn experiment_using_events_path<T>(
     cache_counts: usize,
     cache_capacity: usize,
     miss_latency: &[u64],
+    warmup: usize,
 ) where
     T: ObjectId + DeserializeOwned + Send + Sync,
 {
@@ -160,7 +174,13 @@ fn experiment_using_events_path<T>(
     let result = miss_latency
         .par_iter()
         .map(|&miss_latency| {
-            run_experiment(trace_events, cache_counts, cache_capacity, miss_latency)
+            run_experiment(
+                trace_events,
+                cache_counts,
+                cache_capacity,
+                miss_latency,
+                warmup,
+            )
         })
         .collect::<Vec<_>>();
 
@@ -218,6 +238,13 @@ enum Experiment {
         cache_capacity: usize,
         #[clap(long, short = 'l', help = "miss latency in nanoseconds")]
         miss_latency: Vec<u64>,
+        #[clap(
+            long,
+            short = 'w',
+            help = "number of warmup requests",
+            default_value = "0"
+        )]
+        warmup: usize,
     },
     NetworkTraceAnalysis {
         #[clap(long, short = 'p')]
@@ -232,6 +259,13 @@ enum Experiment {
         cache_capacity: usize,
         #[clap(long, short = 'l', help = "miss latency in microseconds")]
         miss_latency: Vec<u64>,
+        #[clap(
+            long,
+            short = 'w',
+            help = "number of warmup requests",
+            default_value = "0"
+        )]
+        warmup: usize,
     },
     IbmKvTrace {
         #[clap(long, short = 'p')]
@@ -276,12 +310,14 @@ fn main() {
             cache_counts,
             cache_capacity,
             miss_latency,
+            warmup,
         } => {
             experiment_using_events_path::<Flow>(
                 &events_path,
                 cache_counts,
                 cache_capacity,
                 &miss_latency,
+                warmup,
             );
         }
         Experiment::StorageTrace {
@@ -289,12 +325,14 @@ fn main() {
             cache_counts,
             cache_capacity,
             miss_latency,
+            warmup,
         } => {
             experiment_using_events_path::<BlockId>(
                 &events_path,
                 cache_counts,
                 cache_capacity,
                 &miss_latency,
+                warmup,
             );
         }
         Experiment::IbmKvTrace {
@@ -308,6 +346,7 @@ fn main() {
                 cache_counts,
                 cache_capacity,
                 &miss_latency,
+                0,
             );
         }
         Experiment::NetworkTraceAnalysis { events_path } => {
