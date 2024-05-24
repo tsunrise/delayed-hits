@@ -102,3 +102,8 @@ cargo run --bin proj-preprocess --release -- storage-traces -p data/MSNStorageCF
 cargo run --bin proj-experiments --release -- storage-trace -p data/storage-events/MSNFS.meta.events -k <number-of-caches> -c <cache-capacity> -l <latency-in-microsecond>
 ```
 
+To analyze the storage trace, you can run the following command
+
+```sh
+cargo run --bin proj-experiments --release storage-trace-analysis -p <path-to-storage-trace>
+```
