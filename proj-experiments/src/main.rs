@@ -8,7 +8,11 @@ use proj_cache_sim::{
     cache::{construct_k_way_cache, lru::LRU, ObjectId},
     simulator::{compute_statistics, run_simulation},
 };
-use proj_models::{network::Flow, storage::BlockId, RequestEvent, RequestEvents};
+use proj_models::{
+    network::Flow,
+    storage::{BlockId, KVObjectId},
+    RequestEvent, RequestEvents,
+};
 
 mod data;
 
@@ -221,7 +225,21 @@ enum Experiment {
         #[clap(long, short = 'l', help = "miss latency in microseconds")]
         miss_latency: Vec<u64>,
     },
+    IbmKvTrace {
+        #[clap(long, short = 'p')]
+        events_path: Vec<String>,
+        #[clap(long, short = 'k')]
+        cache_counts: usize,
+        #[clap(long, short = 'c')]
+        cache_capacity: usize,
+        #[clap(long, short = 'l', help = "miss latency in milliseconds")]
+        miss_latency: Vec<u64>,
+    },
     StorageTraceAnalysis {
+        #[clap(long, short = 'p')]
+        events_path: Vec<String>,
+    },
+    IbmKvTraceAnalysis {
         #[clap(long, short = 'p')]
         events_path: Vec<String>,
     },
@@ -271,11 +289,27 @@ fn main() {
                 &miss_latency,
             );
         }
+        Experiment::IbmKvTrace {
+            events_path,
+            cache_counts,
+            cache_capacity,
+            miss_latency,
+        } => {
+            experiment_using_events_path::<KVObjectId>(
+                &events_path,
+                cache_counts,
+                cache_capacity,
+                &miss_latency,
+            );
+        }
         Experiment::NetworkTraceAnalysis { events_path } => {
             analyze_events::<Flow>(&events_path);
         }
         Experiment::StorageTraceAnalysis { events_path } => {
             analyze_events::<BlockId>(&events_path);
+        }
+        Experiment::IbmKvTraceAnalysis { events_path } => {
+            analyze_events::<KVObjectId>(&events_path);
         }
     }
 }

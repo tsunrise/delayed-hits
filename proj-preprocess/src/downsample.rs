@@ -5,17 +5,22 @@ use proj_models::RequestEvent;
 pub fn downsample_events<T>(
     events: Vec<RequestEvent<T>>,
     constant_arrival: bool,
+    irt: Option<u64>,
 ) -> Vec<RequestEvent<T>> {
     // calculate the average inter-arrival time
-    let intervals_avg = events
-        .windows(2)
-        .map(|pair| {
-            assert!(pair[0].timestamp <= pair[1].timestamp);
-            (pair[1].timestamp - pair[0].timestamp) as u128
-        })
-        .sum::<u128>() as f64
-        / (events.len() - 1) as f64;
-    let intervals_avg = intervals_avg.round() as u64;
+    let intervals_avg = if let Some(irt) = irt {
+        irt
+    } else {
+        (events
+            .windows(2)
+            .map(|pair| {
+                assert!(pair[0].timestamp <= pair[1].timestamp);
+                (pair[1].timestamp - pair[0].timestamp) as u128
+            })
+            .sum::<u128>() as f64
+            / (events.len() - 1) as f64)
+            .round() as u64
+    };
     println!("average inter-arrival time: {}", intervals_avg);
     if constant_arrival {
         return events

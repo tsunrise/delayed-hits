@@ -1,5 +1,6 @@
 mod downsample;
 mod example_parser;
+mod ibm_kv_parser;
 mod msn_storage_parser;
 mod pcap_parser;
 
@@ -60,6 +61,23 @@ fn read_storage_traces_from_multiple_files(
         events.append(&mut events_from_file);
     }
     sort_or_check_timestamps(&mut events, run_sort);
+    events
+}
+
+fn read_ibm_kv_traces_from_multiple_files(
+    paths: &[&str],
+    run_sort: bool,
+) -> Vec<RequestEvent<u64>> {
+    let mut events = Vec::new();
+    for path in paths {
+        let file = std::fs::File::open(path).unwrap();
+        let mut events_from_file = ibm_kv_parser::read_ibm_kv_events(file);
+        events.append(&mut events_from_file);
+    }
+    sort_or_check_timestamps(&mut events, run_sort);
+    let irt = (events.last().unwrap().timestamp - events.first().unwrap().timestamp)
+        / events.len() as u64;
+    println!("IRT: {}", irt);
     events
 }
 
@@ -126,6 +144,14 @@ enum SubArgs {
         #[clap(short, long)]
         sort: bool,
     },
+    IbmKvTraces {
+        #[clap(short, long)]
+        paths: Vec<String>,
+        #[clap(short, long)]
+        output: String,
+        #[clap(short, long)]
+        sort: bool,
+    },
     DownsampleStorageEvents {
         #[clap(short, long)]
         path: String,
@@ -133,6 +159,8 @@ enum SubArgs {
         output: String,
         #[clap(short, long)]
         constant_arrival: bool,
+        #[clap(short, long)]
+        irt: Option<u64>,
     },
 }
 
@@ -177,14 +205,24 @@ fn main() {
             let events = read_storage_traces_from_multiple_files(&paths, sort);
             write_events_to_binary_file(&events, &output);
         }
+        SubArgs::IbmKvTraces {
+            paths,
+            output,
+            sort,
+        } => {
+            let paths = paths.iter().map(|s| s.as_str()).collect::<Vec<_>>();
+            let events = read_ibm_kv_traces_from_multiple_files(&paths, sort);
+            write_events_to_binary_file(&events, &output);
+        }
         SubArgs::DownsampleStorageEvents {
             path,
             output,
             constant_arrival,
+            irt,
         } => {
             let file = std::fs::File::open(path).unwrap();
             let events: Vec<RequestEvent<BlockId>> = bincode::deserialize_from(file).unwrap();
-            let downsampled_events = downsample::downsample_events(events, constant_arrival);
+            let downsampled_events = downsample::downsample_events(events, constant_arrival, irt);
             write_events_to_binary_file(&downsampled_events, &output);
         }
     }

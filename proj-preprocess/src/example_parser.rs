@@ -33,18 +33,18 @@ mod tests {
         let expected = vec![
             RequestEvent {
                 key: 2,
-                timestamp: 1,
+                timestamp: 0,
             },
             RequestEvent {
                 key: 4,
-                timestamp: 3,
+                timestamp: 2,
             },
         ];
         let cases = vec![
-            "1;2\n3;4\n",
-            "1;2\n3;4",
-            "1;2\n3;4\n\n",
-            "1;2\n3;4\n\n\n",
+            "1;2\n\n3;4\n",
+            "1;2\n\n2;4",
+            "1;2\n\n3;4\n\n",
+            "1;2\n\n4;4\n\n\n",
             "1;2\n\n3;4\n\n\n",
         ];
 
