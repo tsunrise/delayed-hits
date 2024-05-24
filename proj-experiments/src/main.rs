@@ -8,11 +8,7 @@ use proj_cache_sim::{
     cache::{construct_k_way_cache, lru::LRU, ObjectId},
     simulator::{compute_statistics, run_simulation},
 };
-use proj_models::{
-    network::Flow,
-    storage::{BlockId, KVObjectId},
-    RequestEvent, RequestEvents,
-};
+use proj_models::{RequestEvent, RequestEvents, StdObjectId};
 
 mod data;
 
@@ -144,22 +140,6 @@ where
     }
 }
 
-fn sanity_check_using_example(
-    example_path: &str,
-    cache_counts: usize,
-    cache_capacity: usize,
-    miss_latency: u64,
-) {
-    let example_events = data::load_example_events(example_path);
-    run_experiment(
-        example_events,
-        cache_counts,
-        cache_capacity,
-        miss_latency,
-        0,
-    );
-}
-
 fn experiment_using_events_path<T>(
     trace_events_path: &[String],
     cache_counts: usize,
@@ -219,71 +199,26 @@ where
 
 #[derive(Debug, Subcommand)]
 enum Experiment {
-    SanityCheck {
+    Trace {
         #[clap(long, short = 'p')]
-        example_path: String,
-        #[clap(long, short = 'k')]
-        cache_counts: usize,
-        #[clap(long, short = 'c')]
-        cache_capacity: usize,
-        #[clap(long, short = 'l')]
-        miss_latency: u64,
-    },
-    NetworkTrace {
-        #[clap(long, short = 'p')]
-        events_path: Vec<String>,
-        #[clap(long, short = 'k')]
-        cache_counts: usize,
-        #[clap(long, short = 'c')]
-        cache_capacity: usize,
-        #[clap(long, short = 'l', help = "miss latency in nanoseconds")]
-        miss_latency: Vec<u64>,
-        #[clap(
-            long,
-            short = 'w',
-            help = "number of warmup requests",
-            default_value = "0"
-        )]
-        warmup: usize,
-    },
-    NetworkTraceAnalysis {
-        #[clap(long, short = 'p')]
-        events_path: Vec<String>,
-    },
-    StorageTrace {
-        #[clap(long, short = 'p')]
-        events_path: Vec<String>,
-        #[clap(long, short = 'k')]
-        cache_counts: usize,
-        #[clap(long, short = 'c')]
-        cache_capacity: usize,
-        #[clap(long, short = 'l', help = "miss latency in microseconds")]
-        miss_latency: Vec<u64>,
-        #[clap(
-            long,
-            short = 'w',
-            help = "number of warmup requests",
-            default_value = "0"
-        )]
-        warmup: usize,
-    },
-    IbmKvTrace {
-        #[clap(long, short = 'p')]
-        events_path: Vec<String>,
+        event_path: String,
         #[clap(long, short = 'k')]
         cache_counts: usize,
         #[clap(long, short = 'c')]
         cache_capacity: usize,
         #[clap(long, short = 'l', help = "miss latency in milliseconds")]
         miss_latency: Vec<u64>,
+        #[clap(
+            long,
+            short = 'w',
+            help = "number of warmup requests",
+            default_value = "0"
+        )]
+        warmup: usize,
     },
-    StorageTraceAnalysis {
+    Analysis {
         #[clap(long, short = 'p')]
-        events_path: Vec<String>,
-    },
-    IbmKvTraceAnalysis {
-        #[clap(long, short = 'p')]
-        events_path: Vec<String>,
+        event_path: String,
     },
 }
 
@@ -297,66 +232,23 @@ struct Args {
 fn main() {
     let args = Args::parse();
     match args.experiment {
-        Experiment::SanityCheck {
-            example_path,
-            cache_counts,
-            cache_capacity,
-            miss_latency,
-        } => {
-            sanity_check_using_example(&example_path, cache_counts, cache_capacity, miss_latency);
-        }
-        Experiment::NetworkTrace {
-            events_path,
+        Experiment::Trace {
+            event_path,
             cache_counts,
             cache_capacity,
             miss_latency,
             warmup,
         } => {
-            experiment_using_events_path::<Flow>(
-                &events_path,
+            experiment_using_events_path::<StdObjectId>(
+                &[event_path],
                 cache_counts,
                 cache_capacity,
                 &miss_latency,
                 warmup,
             );
         }
-        Experiment::StorageTrace {
-            events_path,
-            cache_counts,
-            cache_capacity,
-            miss_latency,
-            warmup,
-        } => {
-            experiment_using_events_path::<BlockId>(
-                &events_path,
-                cache_counts,
-                cache_capacity,
-                &miss_latency,
-                warmup,
-            );
-        }
-        Experiment::IbmKvTrace {
-            events_path,
-            cache_counts,
-            cache_capacity,
-            miss_latency,
-        } => {
-            experiment_using_events_path::<KVObjectId>(
-                &events_path,
-                cache_counts,
-                cache_capacity,
-                &miss_latency,
-                0,
-            );
-        }
-        Experiment::NetworkTraceAnalysis { events_path } => {
-            analyze_events::<Flow>(&events_path);
-        }
-        Experiment::StorageTraceAnalysis { events_path } => {
-            analyze_events::<BlockId>(&events_path);
-        }
-        Experiment::IbmKvTraceAnalysis { events_path } => {
-            analyze_events::<KVObjectId>(&events_path);
+        Experiment::Analysis { event_path } => {
+            analyze_events::<StdObjectId>(&[event_path]);
         }
     }
 }

@@ -22,3 +22,5 @@ impl<K> RequestEvents<K> {
         Self { events }
     }
 }
+
+pub type StdObjectId = u64;
