@@ -6,16 +6,15 @@ use proj_models::RequestEvent;
 use rand::Rng;
 use rand_distr::{Distribution as _, Exp};
 
-/// expected rearrival time / irt $\approx$ num_unique_objects
-pub fn generate_synthetic_traces<R: Rng>(
+pub fn generate_traces<R: Rng>(
     expected_rearrival_time: usize,
-    num_unique_objects: usize,
+    expected_rearrival_time_irt_ratio: usize,
     num_requests: usize,
     rng: &mut R,
 ) -> Vec<RequestEvent<usize>> {
     let exp = Exp::new(1.0 / expected_rearrival_time as f64).unwrap();
 
-    let mut events_next_timestamps = (0..num_unique_objects)
+    let mut events_next_timestamps = (0..expected_rearrival_time_irt_ratio)
         .map(|idx| {
             (
                 Reverse(rng.gen_range(0..expected_rearrival_time) as u64),
@@ -53,7 +52,7 @@ mod tests {
     fn test_generate_traces() {
         let mut rng = XorShiftRng::seed_from_u64(244);
         for ratio in [5, 9, 17, 28] {
-            let events = generate_synthetic_traces(10000, ratio, 5000, &mut rng);
+            let events = generate_traces(10000, ratio, 1000, &mut rng);
             let median_rearrive_interval = median_rearrive_interval(&events);
             let irt = irt(&events);
             let actual_ratio = median_rearrive_interval as f64 / irt;

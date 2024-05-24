@@ -1,9 +1,4 @@
-mod data;
-mod irt_ratio_experiment;
-
 use derivative::Derivative;
-use rand::SeedableRng as _;
-use rand_xorshift::XorShiftRng;
 use rayon::prelude::*;
 use serde::de::DeserializeOwned;
 use std::fmt::Display;
@@ -18,6 +13,8 @@ use proj_models::{
     storage::{BlockId, KVObjectId},
     RequestEvent, RequestEvents,
 };
+
+mod data;
 
 pub trait EventsIterable<K> {
     fn iter_events(&self) -> impl Iterator<Item = RequestEvent<K>> + '_;
@@ -254,20 +251,6 @@ enum Experiment {
         #[clap(long, short = 'p')]
         events_path: Vec<String>,
     },
-    IrtRatioTest {
-        #[clap(long, short = 'k')]
-        cache_counts: usize,
-        #[clap(long, short = 'c')]
-        cache_capacity: usize,
-        #[clap(long, short = 'l')]
-        miss_latency: u64,
-        #[clap(long, short = 'r')]
-        expected_rearrival_time: usize,
-        #[clap(long, short = 'u')]
-        num_unique_objects: usize,
-        #[clap(long, short = 'n')]
-        num_requests: usize,
-    },
 }
 
 #[derive(Parser, Debug)]
@@ -335,25 +318,6 @@ fn main() {
         }
         Experiment::IbmKvTraceAnalysis { events_path } => {
             analyze_events::<KVObjectId>(&events_path);
-        }
-        Experiment::IrtRatioTest {
-            cache_counts,
-            cache_capacity,
-            miss_latency,
-            expected_rearrival_time,
-            num_unique_objects,
-            num_requests,
-        } => {
-            let mut rng = XorShiftRng::seed_from_u64(244);
-            irt_ratio_experiment::irt_ratio_experiment(
-                &mut rng,
-                expected_rearrival_time,
-                num_unique_objects,
-                num_requests,
-                cache_counts,
-                cache_capacity,
-                miss_latency,
-            );
         }
     }
 }
