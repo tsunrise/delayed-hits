@@ -187,6 +187,14 @@ where
             (max_active_objects as f64 * ratio) as usize
         );
     }
+    let avg_rearrive_interval = proj_cache_sim::heuristics::median_rearrive_interval(&trace_events);
+    println!("median rearrive interval: {}", avg_rearrive_interval);
+    let irt = proj_cache_sim::heuristics::irt(&trace_events);
+    println!("median irt: {}", irt);
+    println!(
+        "avg rearrive interval / irt: {}",
+        avg_rearrive_interval / irt
+    );
 }
 
 #[derive(Debug, Subcommand)]
