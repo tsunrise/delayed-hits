@@ -1,0 +1,9 @@
+# downloaded files
+*.pcap.gz
+*.pcap
+*.gz
+*.aria2
+
+# processed files
+*.netevents
+*.events
