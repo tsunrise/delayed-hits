@@ -6,6 +6,44 @@ This repository contains the code to replicate the result of the paper "Cache wi
 
 **Significant Refactoring in Progress**
 
+## Setup
+
+1. Install Rust by following the instructions at <https://rustup.rs/>.
+2. Get `aria2` from <https://aria2.github.io/>. Make sure `aria2c` is in your path. In ubuntu, you can install it by running
+
+```sh
+sudo apt-get install aria2
+```
+
+3. Make sure you have `gunzip` installed. 
+
+## Download and Preprocess the Network Trace
+
+We have the following traces available to use:
+
+- `data/net-traces/chicago.toml`: The Chicago trace at 2014-03-20 from 13:50 to 14:00. This trace is used by the authors in the paper.
+- `data/net-traces/chicago-lite.toml`: A smaller version of the trace used by the authors in the paper, mainly for testing purposes.
+
+1. Request dataset access from CAIDA: <https://www.caida.org/catalog/datasets/request_user_info_forms/passive_dataset_request/>. You need have access to
+
+    - CAIDA Anonymized Internet Traces 2014 Dataset (high-speed traces/commercial backbone)
+2. Download the preprocessed network trace from CAIDA by running the following command:
+
+```sh
+python3 scripts/download_traces.py <path_to_toml_file> --user <username> --password <password>
+```
+
+The username and password are the ones you used to request access to the dataset.
+
+3. Preprocess the downloaded trace by running:
+
+```sh
+cargo run --bin proj-preprocess --release -- net-traces <path_to_toml_file>
+```
+The processed file will be saved to `data/net-traces/<name>/processed.events` for `<name>.toml`.
+
+
+
 <!-- ## Replicate LRU-MAD latency on Network Trace
 
 1. Download the pcap network traces from CAIDA: <https://data.caida.org/datasets/passive-2019/equinix-nyc/>. You need to request access.
