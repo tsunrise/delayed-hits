@@ -1,6 +1,5 @@
 use ahash::AHashMap;
-
-use crate::types::Nanosecond;
+use proj_models::TimeUnit;
 
 use super::{Cache, ObjectId};
 
@@ -12,12 +11,12 @@ struct ObjectMetaData {
     /// Number of miss windows this object has experienced.
     num_windows: usize,
     /// The total delay this object has experienced.
-    cumulative_delay: Nanosecond,
+    cumulative_delay: TimeUnit,
     /// The timestamp of last miss
-    window_start_timestamp: Nanosecond,
+    window_start_timestamp: TimeUnit,
     /// The timestamp of last access. Used to compute the TTNA. (TTNA = curr_timestamp - last_access_timestamp + 1)
     /// We need TTNA to compute the ranking function score = estimated aggregate delay / TTNA. Higher score means higher priority.
-    last_access_timestamp: Nanosecond,
+    last_access_timestamp: TimeUnit,
 }
 
 impl ObjectMetaData {
@@ -31,7 +30,7 @@ impl ObjectMetaData {
         }
     }
 
-    fn update(&mut self, timestamp: Nanosecond, estimated_miss_latency: Nanosecond) {
+    fn update(&mut self, timestamp: TimeUnit, estimated_miss_latency: TimeUnit) {
         let tssw = timestamp - self.window_start_timestamp;
 
         if self.new || tssw >= estimated_miss_latency {
@@ -46,7 +45,7 @@ impl ObjectMetaData {
         self.new = false;
     }
 
-    fn score(&self, timestamp: Nanosecond) -> f64 {
+    fn score(&self, timestamp: TimeUnit) -> f64 {
         let estimated_agg_delay = self.cumulative_delay as f64 / self.num_windows as f64;
         debug_assert!(
             timestamp >= self.last_access_timestamp,
@@ -61,11 +60,11 @@ pub struct LRUMinAD<K: ObjectId, V> {
     capacity: usize,
     value_store: AHashMap<K, V>,
     metadata_store: AHashMap<K, ObjectMetaData>,
-    estimated_miss_latency: Nanosecond,
+    estimated_miss_latency: TimeUnit,
 }
 
 impl<K: ObjectId, V> LRUMinAD<K, V> {
-    pub fn new(capacity: usize, estimated_miss_latency: Nanosecond) -> Self {
+    pub fn new(capacity: usize, estimated_miss_latency: TimeUnit) -> Self {
         Self {
             capacity,
             value_store: AHashMap::new(),
@@ -76,7 +75,7 @@ impl<K: ObjectId, V> LRUMinAD<K, V> {
 }
 
 impl<K: ObjectId, V> Cache<K, V> for LRUMinAD<K, V> {
-    fn write(&mut self, key: K, value: V, timestamp: Nanosecond) {
+    fn write(&mut self, key: K, value: V, timestamp: TimeUnit) {
         if self.value_store.contains_key(&key) {
             self.value_store.insert(key, value);
         } else {
@@ -97,7 +96,7 @@ impl<K: ObjectId, V> Cache<K, V> for LRUMinAD<K, V> {
         }
     }
 
-    fn get(&mut self, key: &K, timestamp: Nanosecond) -> Option<&V> {
+    fn get(&mut self, key: &K, timestamp: TimeUnit) -> Option<&V> {
         self.metadata_store
             .entry(key.clone())
             .or_insert_with(ObjectMetaData::new)

@@ -3,11 +3,9 @@
 use ahash::{AHashMap, AHashSet};
 use proj_models::RequestEvent;
 
-use crate::cache::ObjectId;
-
 /// Get the maximum number of overlapping live ranges of objects in the workload at time. A live range is
 /// an interval from the first access to the last access of an object.
-pub fn maximum_active_objects<T: ObjectId>(events: &[RequestEvent<T>]) -> usize {
+pub fn maximum_active_objects(events: &[RequestEvent]) -> usize {
     let mut last_access = AHashMap::new();
     let mut last_event_timestamp = 0;
     for event in events {
@@ -36,7 +34,7 @@ pub fn maximum_active_objects<T: ObjectId>(events: &[RequestEvent<T>]) -> usize 
 }
 
 /// Get the average time between the arrival of the same object in the workload.
-pub fn median_rearrive_interval<T: ObjectId>(events: &[RequestEvent<T>]) -> f64 {
+pub fn median_rearrive_interval(events: &[RequestEvent]) -> f64 {
     let mut intervals = Vec::new();
     let mut last_access = AHashMap::new();
 
@@ -62,7 +60,7 @@ pub fn median_rearrive_interval<T: ObjectId>(events: &[RequestEvent<T>]) -> f64 
 }
 
 /// Get the median inter-request time of the workload
-pub fn irt<T: ObjectId>(events: &[RequestEvent<T>]) -> f64 {
+pub fn median_irt(events: &[RequestEvent]) -> f64 {
     let mut intervals = events
         .windows(2)
         .map(|pair| pair[1].timestamp.checked_sub(pair[0].timestamp).unwrap())
@@ -117,6 +115,6 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        assert_eq!(median_rearrive_interval(&events), (3. + 3. + 1.) / 3.);
+        assert_eq!(median_rearrive_interval(&events), 3.);
     }
 }

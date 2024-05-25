@@ -1,6 +1,5 @@
 use linked_hash_map::LinkedHashMap;
-
-use crate::types::Nanosecond;
+use proj_models::TimeUnit;
 
 use super::{Cache, ObjectId};
 
@@ -20,7 +19,7 @@ impl<K: ObjectId, V> LRU<K, V> {
 }
 
 impl<K: ObjectId, V> Cache<K, V> for LRU<K, V> {
-    fn write(&mut self, key: K, value: V, _timestamp: Nanosecond) {
+    fn write(&mut self, key: K, value: V, _timestamp: TimeUnit) {
         if self.store.contains_key(&key) {
             self.store.insert(key, value);
         } else {
@@ -32,7 +31,7 @@ impl<K: ObjectId, V> Cache<K, V> for LRU<K, V> {
         }
     }
 
-    fn get(&mut self, key: &K, _timestamp: Nanosecond) -> Option<&V> {
+    fn get(&mut self, key: &K, _timestamp: TimeUnit) -> Option<&V> {
         self.store.get_refresh(key).map(|v| &*v)
     }
 
@@ -43,6 +42,8 @@ impl<K: ObjectId, V> Cache<K, V> for LRU<K, V> {
 
 #[cfg(test)]
 mod tests {
+    use proj_models::RequestEvent;
+
     use crate::simulator::{run_simulation, RequestResult};
 
     use super::*;
@@ -69,10 +70,10 @@ mod tests {
     fn test_lru_cache_simulator() {
         let mut cache = LRU::new(2);
         let delay = 5;
-        const A: u32 = 0;
-        const B: u32 = 1;
-        const C: u32 = 2;
-        let requests = vec![
+        const A: u64 = 0;
+        const B: u64 = 1;
+        const C: u64 = 2;
+        let requests = [
             // comment is complete timestamp, and cache
             (B, 0), // 5 [] // cache if only written upon completion
             (A, 1), // 6 []
@@ -89,7 +90,10 @@ mod tests {
             // B complete at 19 [C B]
             (A, 19), // 19 [B A] // subtle: if request and completion event are at the same time, we fulfill request first and then process completion.
             (C, 20), // 25 [B A]
-        ];
+        ]
+        .iter()
+        .map(|&(key, timestamp)| RequestEvent { key, timestamp })
+        .collect::<Vec<_>>();
         let mut results = run_simulation(&mut cache, requests, delay);
         results.sort_by_key(|r| r.request_timestamp);
         assert_eq!(
