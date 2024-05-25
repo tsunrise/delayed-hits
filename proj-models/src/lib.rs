@@ -1,26 +1,36 @@
+pub mod codec;
 pub mod network;
 pub mod storage;
 
-use serde_derive::{Deserialize, Serialize};
+use codec::Codec;
 
-use std::fmt::Debug;
+use std::{fmt::Debug, io::Read};
 
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
-pub struct RequestEvent<K> {
-    pub key: K,
-    pub timestamp: u64,
+#[derive(Debug, Eq, PartialEq, Clone)]
+pub struct RequestEvent {
+    pub key: RequestId,
+    pub timestamp: TimeUnit,
 }
 
-// TODO: Deserialize to a stream if the trace is too large.
-#[derive(Debug, Serialize, Deserialize, Eq, PartialEq, Clone)]
-pub struct RequestEvents<K> {
-    pub events: Vec<RequestEvent<K>>,
-}
+impl Codec for RequestEvent {
+    type Deserialized = Self;
 
-impl<K> RequestEvents<K> {
-    pub fn new(events: Vec<RequestEvent<K>>) -> Self {
-        Self { events }
+    fn size_in_bytes(&self) -> usize {
+        self.key.size_in_bytes() + self.timestamp.size_in_bytes()
+    }
+
+    fn to_bytes<W: std::io::prelude::Write>(&self, mut writer: W) -> std::io::Result<()> {
+        self.key.to_bytes(&mut writer)?;
+        self.timestamp.to_bytes(&mut writer)
+    }
+
+    fn from_bytes<R: Read>(mut reader: R) -> std::io::Result<Self::Deserialized> {
+        let key = RequestId::from_bytes(&mut reader)?;
+        let timestamp = TimeUnit::from_bytes(&mut reader)?;
+        Ok(Self { key, timestamp })
     }
 }
 
-pub type StdObjectId = u64;
+pub type RequestId = u64;
+/// timestamp in specified unit (e.g. ns, us, ms)
+pub type TimeUnit = u64;

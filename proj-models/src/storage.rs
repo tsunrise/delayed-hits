@@ -1,6 +1,5 @@
-use serde_derive::{Deserialize, Serialize};
-
-#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash, Serialize, Deserialize)]
+#[deprecated]
+#[derive(Debug, Clone, Copy, Eq, PartialEq, Hash)]
 /// MSN Storage Server Block ID
 pub struct BlockId {
     pub irp_ptr: u64,
