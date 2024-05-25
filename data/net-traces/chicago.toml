@@ -1,5 +1,6 @@
 # the dataset used by the original paper
-prefix = "https://data.caida.org/datasets/passive-2014/equinix-chicago/20140320-130000.UTC/equinix-chicago.dirA."
+url = "https://data.caida.org/datasets/passive-2014/equinix-chicago/20140320-130000.UTC/"
+prefix = "equinix-chicago.dirA."
 traces = [
     "20140320-135000",
     "20140320-135100",

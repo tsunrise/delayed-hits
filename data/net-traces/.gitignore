@@ -1,6 +1,6 @@
 # downloaded files
-*.pcap.gz
 *.pcap
+*.times
 *.gz
 *.aria2
 

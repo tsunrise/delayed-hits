@@ -1,13 +1,23 @@
-use std::{io::Read, time::Duration};
+use std::{
+    io::{BufRead, Read},
+    net::Ipv4Addr,
+    time::Duration,
+};
 
 use etherparse::{NetSlice, SlicedPacket, TransportSlice};
 use pcap_file::pcap::PcapReader;
-use proj_models::{
-    network::{Flow, Protocol},
-    RequestEvent,
-};
 
-pub fn read_flow_from_pcap_data(data: &[u8]) -> Option<Flow> {
+use crate::models::RawRequestWithTimestamp;
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
+pub struct Flow {
+    pub src_ip: Ipv4Addr,
+    pub dst_ip: Ipv4Addr,
+    pub src_port: u16,
+    pub dst_port: u16,
+}
+
+fn read_flow_from_pcap_data(data: &[u8]) -> Option<Flow> {
     let parsed = SlicedPacket::from_ip(data).ok()?;
     let (src_ip, dst_ip) = match parsed.net {
         Some(NetSlice::Ipv4(ipv4)) => (
@@ -17,13 +27,9 @@ pub fn read_flow_from_pcap_data(data: &[u8]) -> Option<Flow> {
         _ => return None,
     };
 
-    let (src_port, dst_port, protocol) = match parsed.transport {
-        Some(TransportSlice::Tcp(tcp)) => {
-            (tcp.source_port(), tcp.destination_port(), Protocol::TCP)
-        }
-        Some(TransportSlice::Udp(udp)) => {
-            (udp.source_port(), udp.destination_port(), Protocol::UDP)
-        }
+    let (src_port, dst_port) = match parsed.transport {
+        Some(TransportSlice::Tcp(tcp)) => (tcp.source_port(), tcp.destination_port()),
+        Some(TransportSlice::Udp(udp)) => (udp.source_port(), udp.destination_port()),
         _ => return None,
     };
 
@@ -32,78 +38,52 @@ pub fn read_flow_from_pcap_data(data: &[u8]) -> Option<Flow> {
         dst_ip,
         src_port,
         dst_port,
-        protocol,
     })
 }
 
-pub fn read_init_time<R: Read>(reader: R) -> Duration {
-    let mut pcap_reader = PcapReader::new(reader).unwrap();
-    let first_pkt = pcap_reader.next_packet().unwrap().unwrap();
-    first_pkt.timestamp
-}
-
-pub fn read_pcap_events<R: Read>(reader: R, init_time: Duration) -> Vec<RequestEvent<Flow>> {
+pub fn read_pcap<R: Read>(reader: R) -> Vec<Option<Flow>> {
     let mut pcap_reader = PcapReader::new(reader).unwrap();
 
     let mut events = Vec::new();
     while let Some(pkt) = pcap_reader.next_packet() {
         if let Ok(pkt) = pkt {
-            if let Some(flow) = read_flow_from_pcap_data(&pkt.data) {
-                events.push((flow, pkt.timestamp));
-            }
+            events.push(read_flow_from_pcap_data(&pkt.data));
         }
     }
 
-    // initial timestamp is now always 0
     events
-        .iter()
-        .map(|(flow, timestamp)| RequestEvent {
-            key: flow.clone(),
-            timestamp: (*timestamp - init_time).as_nanos() as u64,
+}
+
+pub fn read_timestamps<R: BufRead>(reader: R) -> Vec<Duration> {
+    reader
+        .lines()
+        .map(|line| {
+            let line = line.unwrap(); // example: 1395323520.000002444
+            let mut it = line.split('.');
+            let sec = it.next().unwrap().parse::<u64>().unwrap();
+            let nsec = it.next().unwrap().parse::<u32>().unwrap();
+            debug_assert!(it.next().is_none());
+            Duration::new(sec, nsec)
         })
         .collect()
 }
 
-#[cfg(test)]
-mod tests {
-    use super::*;
-    use std::{net::Ipv4Addr, path::PathBuf};
+pub fn read_pcap_with_timestamps<R: Read, R2: BufRead>(
+    pcap_reader: R,
+    timestamp_reader: R2,
+) -> Vec<RawRequestWithTimestamp<Flow>> {
+    let flows = read_pcap(pcap_reader);
+    let timestamps = read_timestamps(timestamp_reader);
 
-    #[test]
-    fn test_read_pcap_events() {
-        let mut path = PathBuf::from(env!("CARGO_MANIFEST_DIR"));
-        path.push("test-resources/test.pcap");
-        let file = std::fs::File::open(path).unwrap();
-        let events = read_pcap_events(file, Duration::from_secs(0));
-        assert_eq!(
-            events[0].key,
-            Flow {
-                src_ip: Ipv4Addr::new(172, 16, 11, 12),
-                dst_ip: Ipv4Addr::new(74, 125, 19, 17),
-                src_port: 64565,
-                dst_port: 443,
-                protocol: Protocol::TCP,
-            }
-        );
-        assert_eq!(
-            events[1].key,
-            Flow {
-                src_ip: Ipv4Addr::new(172, 16, 11, 12),
-                dst_ip: Ipv4Addr::new(74, 125, 19, 17),
-                src_port: 64565,
-                dst_port: 443,
-                protocol: Protocol::TCP,
-            }
-        );
-        assert_eq!(
-            events[2].key,
-            Flow {
-                src_ip: Ipv4Addr::new(74, 125, 19, 17),
-                dst_ip: Ipv4Addr::new(172, 16, 11, 12),
-                src_port: 443,
-                dst_port: 64565,
-                protocol: Protocol::TCP,
-            }
-        )
-    }
+    assert_eq!(
+        flows.len(),
+        timestamps.len(),
+        "The number of flows and timestamps should match."
+    );
+
+    flows
+        .into_iter()
+        .zip(timestamps)
+        .filter_map(|(flow, timestamp)| flow.map(|flow| (flow, timestamp).into()))
+        .collect()
 }

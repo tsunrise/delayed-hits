@@ -2,7 +2,6 @@
 # the binary will download the traces specified in the TOML file and put them in the data/net-traces/trace_name/raw directory.
 
 import os
-import sys
 import toml
 import argparse
 
@@ -11,14 +10,18 @@ def download_traces(toml_filepath: str, user: str, password: str):
     with open(toml_filepath, 'r') as toml_file:
         config = toml.load(toml_file)
         output_dir = toml_filepath.removesuffix(".toml") + "/raw"
+        url = config['url']
         prefix = config['prefix']
-        pcaps = [prefix + trace + ".UTC.anon.pcap.gz" for trace in config['traces']]
-        times = [prefix + trace + ".UTC.anon.times.gz" for trace in config['traces']]
+        pcaps = [url + prefix + trace + ".UTC.anon.pcap" for trace in config['traces']]
+        times = [url + prefix + trace + ".UTC.anon.times" for trace in config['traces']]
 
         for path in pcaps + times:
             os.system(f"mkdir -p {output_dir}")
             if not os.path.exists(f"{output_dir}/{os.path.basename(path)}"):
-                os.system(f"aria2c -x 8 -d {output_dir} {path} --http-user={user} --http-passwd={password}")
+                if not os.path.exists(f"{output_dir}/{os.path.basename(path)}.gz"):
+                    os.system(f"aria2c -x 8 -d {output_dir} {path} --http-user={user} --http-passwd={password}")
+                # unzip the file
+                os.system(f"gunzip {output_dir}/{os.path.basename(path)}.gz")
             else:
                 print(f"File {path} already exists")
 
