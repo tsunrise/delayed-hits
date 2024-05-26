@@ -34,45 +34,36 @@ pub fn maximum_active_objects(events: &[RequestEvent]) -> usize {
 }
 
 /// Get the average time between the arrival of the same object in the workload.
-pub fn median_rearrive_interval(events: &[RequestEvent]) -> f64 {
-    let mut intervals = Vec::new();
+pub fn mean_rearrive_interval(events: &[RequestEvent]) -> f64 {
+    let mut total: u64 = 0;
+    let mut count: u64 = 0;
     let mut last_access = AHashMap::new();
 
     for event in events {
         if let Some(last_access_time) = last_access.get(&event.key) {
-            intervals.push(
-                event
-                    .timestamp
-                    .checked_sub(*last_access_time)
-                    .expect("events are not in order"),
-            );
+            total += event
+                .timestamp
+                .checked_sub(*last_access_time)
+                .expect("events are not in order");
+            count += 1;
         }
         last_access.insert(event.key.clone(), event.timestamp);
     }
 
-    if intervals.is_empty() {
+    if count == 0 {
         0.
     } else {
-        let index = intervals.len() / 2;
-        let (_, v, _) = intervals.select_nth_unstable(index);
-        *v as f64
+        total as f64 / count as f64
     }
 }
 
 /// Get the median inter-request time of the workload
-pub fn median_irt(events: &[RequestEvent]) -> f64 {
-    let mut intervals = events
+pub fn mean_irt(events: &[RequestEvent]) -> f64 {
+    events
         .windows(2)
         .map(|pair| pair[1].timestamp.checked_sub(pair[0].timestamp).unwrap())
-        .collect::<Vec<_>>();
-
-    if intervals.is_empty() {
-        0.
-    } else {
-        let index = intervals.len() / 2;
-        let (_, v, _) = intervals.select_nth_unstable(index);
-        *v as f64
-    }
+        .sum::<u64>() as f64
+        / (events.len() - 1) as f64
 }
 
 #[cfg(test)]
@@ -115,6 +106,6 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        assert_eq!(median_rearrive_interval(&events), 3.);
+        assert_eq!(mean_rearrive_interval(&events), 3.);
     }
 }

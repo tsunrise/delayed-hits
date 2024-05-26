@@ -154,31 +154,37 @@ where
 pub struct Statistics {
     pub total_latency: u128,
     pub average_latency: f64,
-    pub latencies_by_timestamp_sorted: Vec<(TimeUnit, TimeUnit)>,
+    // pub latencies_by_timestamp_sorted: Vec<(TimeUnit, TimeUnit)>,
 }
 
 pub fn compute_statistics(result: &[RequestResult]) -> Statistics {
-    let mut latencies_by_timestamp_sorted = result
-        .iter()
-        .map(|r| {
-            (
-                r.request_timestamp,
-                r.completion_timestamp - r.request_timestamp,
-            )
-        })
-        .collect::<Vec<_>>();
-    latencies_by_timestamp_sorted.sort_by_key(|&(timestamp, _)| timestamp);
+    // let mut latencies_by_timestamp_sorted = result
+    //     .iter()
+    //     .map(|r| {
+    //         (
+    //             r.request_timestamp,
+    //             r.completion_timestamp - r.request_timestamp,
+    //         )
+    //     })
+    //     .collect::<Vec<_>>();
+    // latencies_by_timestamp_sorted.sort_by_key(|&(timestamp, _)| timestamp);
 
-    let total_latency: u128 = latencies_by_timestamp_sorted
+    // let total_latency: u128 = latencies_by_timestamp_sorted
+    //     .iter()
+    //     .map(|(_, latency)| *latency as u128)
+    //     .sum();
+
+    let total_latency: u128 = result
         .iter()
-        .map(|(_, latency)| *latency as u128)
+        .map(|r| r.completion_timestamp - r.request_timestamp)
+        .map(|latency| latency as u128)
         .sum();
 
-    let average_latency = total_latency as f64 / latencies_by_timestamp_sorted.len() as f64;
+    let average_latency = total_latency as f64 / result.len() as f64;
 
     Statistics {
         total_latency,
         average_latency,
-        latencies_by_timestamp_sorted,
+        // latencies_by_timestamp_sorted,
     }
 }

@@ -1,5 +1,4 @@
 pub mod codec;
-pub mod network;
 pub mod storage;
 
 use codec::Codec;
@@ -32,5 +31,5 @@ impl Codec for RequestEvent {
 }
 
 pub type RequestId = u64;
-/// timestamp in specified unit (e.g. ns, us, ms)
+/// timestamp in specified unit (ns)
 pub type TimeUnit = u64;

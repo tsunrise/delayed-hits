@@ -9,7 +9,7 @@ struct ObjectMetaData {
     /// and discovered this bug. Refernece: https://github.com/cmu-snap/Delayed-Hits/blob/4f21d4c5bea26262715b88c97cd66ece7cdb965e/caching/src/cache_lru_aggdelay.cpp#L35
     new: bool,
     /// Number of miss windows this object has experienced.
-    num_windows: usize,
+    num_windows: u32,
     /// The total delay this object has experienced.
     cumulative_delay: TimeUnit,
     /// The timestamp of last miss
