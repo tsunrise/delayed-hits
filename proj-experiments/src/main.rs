@@ -70,6 +70,7 @@ struct ExperimentResult {
     improvement: f64,
     cache_counts: usize,
     cache_capacity: usize,
+    warmup: usize,
     miss_latency: u64,
 }
 
@@ -155,6 +156,7 @@ fn run_experiment(
         improvement,
         cache_counts,
         cache_capacity,
+        warmup,
         miss_latency,
     }
 }
