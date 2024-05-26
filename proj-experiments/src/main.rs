@@ -84,7 +84,7 @@ impl Display for ExperimentResult {
             total latency (lru-mad): {}\n\
             average latency (lru-mad): {}\n\
             improvement (%): {}\n\
-            CSV: {}, {}, {}, {}, {}",
+            CSV: {}, {}, {}, {}, {}, {}",
             self.cache_counts,
             self.cache_capacity,
             self.miss_latency,
@@ -96,6 +96,7 @@ impl Display for ExperimentResult {
             self.cache_counts,
             self.cache_capacity,
             self.miss_latency,
+            self.warmup,
             self.average_latency_lru,
             self.average_latency_lru_mad
         )
