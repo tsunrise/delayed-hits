@@ -1,9 +1,11 @@
 mod models;
+mod msr_storage_parser;
 mod pcap_parser;
 mod post_process;
 use std::{
     io::{BufReader, Write},
     path::PathBuf,
+    str::FromStr,
 };
 
 use clap::{Parser, Subcommand};
@@ -44,12 +46,35 @@ fn process_pcaps(path: &str) {
     writer.flush().unwrap();
 }
 
+fn process_msr_storage(name: &str) {
+    let data_root = PathBuf::from_str("data").unwrap().join("msr_cambridge");
+    let csv_path = data_root
+        .join("raw")
+        .join("MSR-Cambridge-2")
+        .join(format!("{}.csv", name));
+    let output_path = data_root.join(format!("{}.processed.events", name));
+
+    let reader = std::fs::File::open(&csv_path).expect(&format!("Cannot open file {:?}", csv_path));
+    let reader = std::io::BufReader::new(reader);
+    let raw_requests = msr_storage_parser::read_msr_cambridge_requests(reader);
+
+    let output_file = std::fs::File::create(output_path).unwrap();
+    let mut writer = std::io::BufWriter::new(output_file);
+    post_process_requests(raw_requests, &mut writer).unwrap();
+    writer.flush().unwrap();
+}
+
 #[derive(Debug, Clone, Subcommand)]
 enum SubArgs {
     NetTraces {
         // positional command
         #[clap(required = true, help = "Path to the toml file for experiment")]
         path: String,
+    },
+    MsrTraces {
+        // positional command
+        #[clap(required = true, help = "the trace name")]
+        name: String,
     },
 }
 
@@ -64,6 +89,9 @@ fn main() {
     match args.args {
         SubArgs::NetTraces { path } => {
             process_pcaps(&path);
+        }
+        SubArgs::MsrTraces { name } => {
+            process_msr_storage(&name);
         }
     }
 }
