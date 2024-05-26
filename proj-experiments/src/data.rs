@@ -1,18 +1,7 @@
-use proj_models::RequestEvents;
-use serde::de::DeserializeOwned;
+use proj_models::{codec::Codec, RequestEvent};
 
-pub fn load_example_events(path: &str) -> RequestEvents<u32> {
-    let file = std::fs::File::open(path).unwrap();
-    let reader = std::io::BufReader::new(file);
-    bincode::deserialize_from(reader).unwrap()
-}
-
-/// Load network traces from a preprocessed events file.
-pub fn load_events<T>(path: &str) -> RequestEvents<T>
-where
-    T: DeserializeOwned,
-{
-    let file = std::fs::File::open(path).unwrap();
-    let reader = std::io::BufReader::new(file);
-    bincode::deserialize_from(reader).unwrap()
+pub fn load_data(path: &str) -> impl Iterator<Item = RequestEvent> {
+    let reader = std::fs::File::open(path).unwrap();
+    let reader = std::io::BufReader::new(reader);
+    RequestEvent::repeat_read_till_end(reader).map(|r| r.unwrap())
 }
