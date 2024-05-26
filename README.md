@@ -42,7 +42,13 @@ cargo run --bin proj-preprocess --release -- net-traces <path_to_toml_file>
 ```
 The processed file will be saved to `data/net-traces/<name>/processed.events` for `<name>.toml`.
 
+## Simulate LRU and LRU-MAD on processed trace
 
+To simulate LRU and LRU-MAD on the processed trace, run the following:
+
+```sh
+cargo run --bin proj-experiments --release -- trace -p data/net-traces/<trace_name>/processed.events -c <num_caches> -k <cache_associativity> -l <latency_in_ns> -w <warmup>
+```
 
 <!-- ## Replicate LRU-MAD latency on Network Trace
 
