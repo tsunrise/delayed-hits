@@ -19,7 +19,7 @@ def download_traces(toml_filepath: str, user: str, password: str):
             os.system(f"mkdir -p {output_dir}")
             if not os.path.exists(f"{output_dir}/{os.path.basename(path)}"):
                 if not os.path.exists(f"{output_dir}/{os.path.basename(path)}.gz"):
-                    os.system(f"aria2c -x 8 -d {output_dir} {path} --http-user={user} --http-passwd={password}")
+                    os.system(f"aria2c -x 8 -d {output_dir} {path}.gz --http-user={user} --http-passwd={password}")
                 # unzip the file
                 os.system(f"gunzip {output_dir}/{os.path.basename(path)}.gz")
             else:
