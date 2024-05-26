@@ -8,31 +8,6 @@ use proj_cache_sim::{
     simulator::{compute_statistics, run_simulation},
 };
 
-#[derive(Debug, Subcommand)]
-enum Experiment {
-    Trace {
-        #[clap(long, short = 'p')]
-        event_path: String,
-        #[clap(long, short = 'k')]
-        cache_counts: usize,
-        #[clap(long, short = 'c')]
-        cache_capacity: usize,
-        #[clap(long, short = 'l', help = "miss latency in nanoseconds")]
-        miss_latency: u64,
-        #[clap(
-            long,
-            short = 'w',
-            help = "number of warmup requests",
-            default_value = "0"
-        )]
-        warmup: usize,
-    },
-    Analysis {
-        #[clap(required = true)]
-        event_path: String,
-    },
-}
-
 fn analyze_event(event_path: &str) {
     let requests = data::load_data(event_path).collect::<Vec<_>>();
     let maximum_active_objects = heuristics::maximum_active_objects(&requests);
@@ -134,6 +109,41 @@ fn run_experiment(
         cache_capacity,
         miss_latency,
     }
+}
+
+fn parse_miss_latency(s: &str) -> Result<u64, std::num::ParseIntError> {
+    match s {
+        s if s.ends_with("ns") => s[..s.len() - 2].parse(),
+        s if s.ends_with("us") => Ok(s[..s.len() - 2].parse::<u64>()? * 1000),
+        s if s.ends_with("ms") => Ok(s[..s.len() - 2].parse::<u64>()? * 1_000_000),
+        s if s.ends_with("s") => Ok(s[..s.len() - 1].parse::<u64>()? * 1_000_000_000),
+        _ => s.parse(),
+    }
+}
+
+#[derive(Debug, Subcommand)]
+enum Experiment {
+    Trace {
+        #[clap(long, short = 'p')]
+        event_path: String,
+        #[clap(long, short = 'k')]
+        cache_counts: usize,
+        #[clap(long, short = 'c')]
+        cache_capacity: usize,
+        #[clap(long, short = 'l', help = "miss latency with unit (e.g. 300ns, 2ms)", value_parser = parse_miss_latency)]
+        miss_latency: u64,
+        #[clap(
+            long,
+            short = 'w',
+            help = "number of warmup requests",
+            default_value = "0"
+        )]
+        warmup: usize,
+    },
+    Analysis {
+        #[clap(required = true)]
+        event_path: String,
+    },
 }
 
 #[derive(Parser, Debug)]

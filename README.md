@@ -47,8 +47,16 @@ The processed file will be saved to `data/net-traces/<name>/processed.events` fo
 To simulate LRU and LRU-MAD on the processed trace, run the following:
 
 ```sh
-cargo run --bin proj-experiments --release -- trace -p data/net-traces/<trace_name>/processed.events -c <num_caches> -k <cache_associativity> -l <latency_in_ns> -w <warmup>
+cargo run --bin proj-experiments --release -- trace -p data/net-traces/<trace_name>/processed.events -c <num_caches> -k <cache_associativity> -l <latency> -w <warmup>
 ```
+
+For example:
+
+```sh
+cargo run --bin proj-experiments --release -- trace -p data/net-traces/chicago-lite/processed.events -c 64 -k 64 -l 30ms -w 5000000
+```
+
+For latency, you can use `ms` for milliseconds, `us` for microseconds, and `ns` for nanoseconds. If you do not provide the unit, it will be assumed to be nanoseconds.
 
 <!-- ## Replicate LRU-MAD latency on Network Trace
 
