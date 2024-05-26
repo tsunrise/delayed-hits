@@ -55,6 +55,32 @@ pub trait Codec {
     }
 }
 
+#[macro_export]
+macro_rules! impl_codec {
+    ($struct:ident, $($field:ident, $field_type:ty),+) => {
+        // use Codec trait
+
+        impl crate::codec::Codec for $struct {
+            type Deserialized = Self;
+
+            fn size_in_bytes(&self) -> usize {
+                $(self.$field.size_in_bytes()+)*0
+            }
+
+            fn to_bytes<W: std::io::Write>(&self, mut writer: W) -> std::io::Result<()> {
+                $(self.$field.to_bytes(&mut writer)?;)*
+                Ok(())
+            }
+
+            fn from_bytes<R: std::io::Read>(mut reader: R) -> std::io::Result<Self::Deserialized> {
+                Ok(Self {
+                    $($field: <$field_type>::from_bytes(&mut reader)?),*
+                })
+            }
+        }
+    };
+}
+
 macro_rules! impl_codec_for_primitive {
     ($t:ty) => {
         impl Codec for $t {
