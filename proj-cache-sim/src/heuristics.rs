@@ -57,13 +57,56 @@ pub fn mean_rearrive_interval(events: &[RequestEvent]) -> f64 {
     }
 }
 
-/// Get the median inter-request time of the workload
-pub fn mean_irt(events: &[RequestEvent]) -> f64 {
-    events
-        .windows(2)
-        .map(|pair| pair[1].timestamp.checked_sub(pair[0].timestamp).unwrap())
-        .sum::<u64>() as f64
-        / (events.len() - 1) as f64
+pub struct IrtStatistics {
+    /// buckets[i]: 10^i <= irt < 10^(i+1)
+    pub buckets: [u64; 10],
+    pub total: u128,
+    pub count: u64,
+}
+
+impl IrtStatistics {
+    fn new() -> Self {
+        Self {
+            buckets: [0; 10],
+            total: 0,
+            count: 0,
+        }
+    }
+
+    fn add(&mut self, irt: u64) {
+        self.total += irt as u128;
+        self.count += 1;
+        let mut c = irt;
+        let mut bucket = 0;
+        while c >= 10 && bucket < 9 {
+            c /= 10;
+            bucket += 1;
+        }
+        self.buckets[bucket as usize] += 1;
+    }
+
+    pub fn mean(&self) -> f64 {
+        self.total as f64 / self.count as f64
+    }
+}
+
+/// Get the inter-request time of the workload
+pub fn get_irt(events: &[RequestEvent]) -> IrtStatistics {
+    let mut irt = IrtStatistics::new();
+    let mut last_timestamp = 0;
+    for event in events {
+        if event.timestamp < last_timestamp {
+            panic!(
+                "events are not in order: the event of key {:?} at timestamp {} is earlier than the last event at timestamp {}",
+                event.key, event.timestamp, last_timestamp
+            );
+        }
+        if last_timestamp != 0 {
+            irt.add(event.timestamp - last_timestamp);
+        }
+        last_timestamp = event.timestamp;
+    }
+    irt
 }
 
 #[cfg(test)]

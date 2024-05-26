@@ -8,18 +8,51 @@ use proj_cache_sim::{
     simulator::{compute_statistics, run_simulation},
 };
 
+fn get_time_string(nanos: u128) -> String {
+    let micros = nanos / 1000;
+    let millis = micros / 1000;
+    let seconds = millis / 1000;
+    if seconds > 0 {
+        format!("{} s", seconds)
+    } else if millis > 0 {
+        format!("{} ms", millis)
+    } else if micros > 0 {
+        format!("{} us", micros)
+    } else {
+        format!("{} ns", nanos)
+    }
+}
+
+fn print_irt_stats(irt_stat: &heuristics::IrtStatistics) {
+    println!(
+        "Mean inter-request time: {}",
+        get_time_string(irt_stat.mean() as u128)
+    );
+    println!("Inter-request time distribution:");
+    for i in 0..10 {
+        let ns = 10u64.pow(i as u32);
+        let count = irt_stat.buckets[i];
+        if count == 0 {
+            continue;
+        }
+        println!(
+            "  {} <= irt < {}: {} ({:.2}%)",
+            get_time_string(ns as u128),
+            get_time_string(10 * ns as u128),
+            count,
+            count as f64 / irt_stat.count as f64 * 100.0
+        );
+    }
+}
+
 fn analyze_event(event_path: &str) {
     let requests = data::load_data(event_path).collect::<Vec<_>>();
     let maximum_active_objects = heuristics::maximum_active_objects(&requests);
-    let mean_irt = heuristics::mean_irt(&requests);
+    let irt_stat = heuristics::get_irt(&requests);
 
     println!("Number of requests: {}", requests.len());
     println!("Maximum active objects: {}", maximum_active_objects);
-    println!(
-        "Mean inter-request time: {:.0} ns ({:.2} us)",
-        mean_irt,
-        mean_irt / 1000.0
-    );
+    print_irt_stats(&irt_stat);
 
     let suggested_total_cache_size = (maximum_active_objects as f64 * 0.05).ceil() as usize;
     println!(
@@ -80,10 +113,18 @@ fn run_experiment(
     cache_capacity: usize,
     miss_latency: u64,
     warmup: usize,
+    max_requests: Option<usize>,
 ) -> ExperimentResult {
     let mut lru = construct_k_way_cache(cache_counts, |_| LRU::new(cache_capacity));
-    let request_results_lru =
-        run_simulation(&mut lru, data::load_data(requests_path), miss_latency);
+    let request_results_lru = if let Some(max_requests) = max_requests {
+        run_simulation(
+            &mut lru,
+            data::load_data(requests_path).take(max_requests),
+            miss_latency,
+        )
+    } else {
+        run_simulation(&mut lru, data::load_data(requests_path), miss_latency)
+    };
 
     let stats = compute_statistics(&request_results_lru);
     let lru_avg_latency = stats.average_latency;
@@ -91,8 +132,15 @@ fn run_experiment(
     let mut lru_mad = construct_k_way_cache(cache_counts, |_| {
         LRUMinAD::new(cache_capacity, miss_latency)
     });
-    let request_results_lru_mad =
-        run_simulation(&mut lru_mad, data::load_data(requests_path), miss_latency);
+    let request_results_lru_mad = if let Some(max_requests) = max_requests {
+        run_simulation(
+            &mut lru_mad,
+            data::load_data(requests_path).take(max_requests),
+            miss_latency,
+        )
+    } else {
+        run_simulation(&mut lru_mad, data::load_data(requests_path), miss_latency)
+    };
 
     let stats = compute_statistics(&request_results_lru_mad[warmup..]);
     let lru_mad_avg_latency = stats.average_latency;
@@ -121,6 +169,13 @@ fn parse_miss_latency(s: &str) -> Result<u64, std::num::ParseIntError> {
     }
 }
 
+fn head(path: &str, n: usize) {
+    let requests = data::load_data(path).take(n);
+    for request in requests {
+        println!("{}:{}", request.timestamp, request.key)
+    }
+}
+
 #[derive(Debug, Subcommand)]
 enum Experiment {
     Trace {
@@ -139,10 +194,18 @@ enum Experiment {
             default_value = "0"
         )]
         warmup: usize,
+        #[clap(long, short = 'm', help = "maximum number of requests to process")]
+        max_requests: Option<usize>,
     },
     Analysis {
         #[clap(required = true)]
         event_path: String,
+    },
+    Head {
+        #[clap(required = true)]
+        event_path: String,
+        #[clap(long, short = 'n', default_value = "10")]
+        n: usize,
     },
 }
 
@@ -162,6 +225,7 @@ fn main() {
             cache_capacity,
             miss_latency,
             warmup,
+            max_requests,
         } => {
             let result = run_experiment(
                 &event_path,
@@ -169,11 +233,15 @@ fn main() {
                 cache_capacity,
                 miss_latency,
                 warmup,
+                max_requests,
             );
             println!("{}", result);
         }
         Experiment::Analysis { event_path } => {
             analyze_event(&event_path);
+        }
+        Experiment::Head { event_path, n } => {
+            head(&event_path, n);
         }
     }
 }

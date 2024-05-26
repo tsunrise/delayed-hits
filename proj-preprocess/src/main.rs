@@ -1,3 +1,4 @@
+mod cdn_parser;
 mod models;
 mod msr_storage_parser;
 mod pcap_parser;
@@ -64,6 +65,21 @@ fn process_msr_storage(name: &str) {
     writer.flush().unwrap();
 }
 
+fn process_cdn_traces() {
+    let data_root = PathBuf::from_str("data").unwrap().join("cdn-traces");
+    let trace_path = data_root.join("cdn_long.csv");
+    let output_path = data_root.join("cdn_long.processed.events");
+
+    let reader =
+        std::fs::File::open(&trace_path).expect(&format!("Cannot open file {:?}", trace_path));
+    let reader = std::io::BufReader::new(reader);
+    let raw_requests = cdn_parser::read_cdn_requests(reader);
+
+    let output_file = std::fs::File::create(output_path).unwrap();
+    let mut writer = std::io::BufWriter::new(output_file);
+    post_process_requests(raw_requests, &mut writer).unwrap();
+    writer.flush().unwrap();
+}
 #[derive(Debug, Clone, Subcommand)]
 enum SubArgs {
     NetTraces {
@@ -76,6 +92,7 @@ enum SubArgs {
         #[clap(required = true, help = "the trace name")]
         name: String,
     },
+    CdnTraces,
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -92,6 +109,9 @@ fn main() {
         }
         SubArgs::MsrTraces { name } => {
             process_msr_storage(&name);
+        }
+        SubArgs::CdnTraces => {
+            process_cdn_traces();
         }
     }
 }
