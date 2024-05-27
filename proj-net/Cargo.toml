@@ -1,0 +1,11 @@
+[package]
+name = "proj-net"
+description = "A lightweight message based channel between remote hosts, built on multiple TCP connections."
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+async-channel = "2.3.1"
+proj-models = { version = "0.1.0", path = "../proj-models" }
+tokio = { version = "1.37.0", features = ["full"] }
+tracing = "0.1.40"

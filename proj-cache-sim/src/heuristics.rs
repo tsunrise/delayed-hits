@@ -149,6 +149,6 @@ mod tests {
             })
             .collect::<Vec<_>>();
 
-        assert_eq!(mean_rearrive_interval(&events), 3.);
+        assert_eq!(mean_rearrive_interval(&events), (3 + 3 + 1) as f64 / 3.0);
     }
 }
