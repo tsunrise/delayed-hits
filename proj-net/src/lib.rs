@@ -67,6 +67,9 @@ impl RemoteChannel {
     }
 
     pub fn from_tcp_streams(streams: Vec<TcpStream>) -> Self {
+        for stream in streams.iter() {
+            stream.set_nodelay(true).unwrap();
+        }
         let (read_sockets, write_sockets): (Vec<_>, Vec<_>) =
             streams.into_iter().map(|s| s.into_split()).unzip();
 
