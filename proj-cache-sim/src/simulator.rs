@@ -41,7 +41,7 @@ where
                     verbose!("Warning: event not in order is ignored: the event of key {:?} at timestamp {} is earlier than the last request at timestamp {}", key, timestamp, last_request_timestamp);
                     requests.next();
                 } else {
-                    next_request = Some((key.clone(), *timestamp));
+                    next_request = Some((key, *timestamp));
                     break;
                 }
             }
@@ -108,7 +108,7 @@ where
                 break;
             }
             Event::Request(key, timestamp) => {
-                if let Some(_) = cache.get(&key, timestamp) {
+                if cache.get(&key, timestamp).is_some() {
                     // the request is immediately fulfilled.
                     results.push(RequestResult {
                         key,
@@ -118,9 +118,8 @@ where
                 } else {
                     // check if the request is already in progress.
                     if !requests_in_progress.contains_key(&key) {
-                        requests_in_progress.insert(key.clone(), Vec::new());
-                        future_completions
-                            .push_back((key.clone(), timestamp + miss_latency as TimeUnit));
+                        requests_in_progress.insert(key, Vec::new());
+                        future_completions.push_back((key, timestamp + miss_latency as TimeUnit));
                     }
                     requests_in_progress.get_mut(&key).unwrap().push(timestamp);
                 }
@@ -131,14 +130,14 @@ where
                     .remove(&key)
                     .expect("pending requests for {key:?} should exist.");
                 debug_assert!(
-                    pending_requests.len() > 0,
+                    !pending_requests.is_empty(),
                     "pending requests for {key:?} should not be empty."
                 );
 
-                cache.write(key.clone(), (), timestamp);
+                cache.write(key, (), timestamp);
                 pending_requests.into_iter().for_each(|req_timestamp| {
                     results.push(RequestResult {
-                        key: key.clone(),
+                        key,
                         request_timestamp: req_timestamp,
                         completion_timestamp: timestamp,
                     });

@@ -9,7 +9,7 @@ pub fn maximum_active_objects(events: &[RequestEvent]) -> usize {
     let mut last_access = AHashMap::new();
     let mut last_event_timestamp = 0;
     for event in events {
-        last_access.insert(event.key.clone(), event.timestamp);
+        last_access.insert(event.key, event.timestamp);
         if event.timestamp < last_event_timestamp {
             panic!(
                 "events are not in order: the event of key {:?} at timestamp {} is earlier than the last event at timestamp {}",
@@ -21,7 +21,7 @@ pub fn maximum_active_objects(events: &[RequestEvent]) -> usize {
     let mut active_objects = AHashSet::new();
     let mut max_active_objects = 0;
     for event in events {
-        active_objects.insert(event.key.clone());
+        active_objects.insert(event.key);
         if let Some(last_access_time) = last_access.get(&event.key) {
             if event.timestamp == *last_access_time {
                 active_objects.remove(&event.key);
@@ -47,7 +47,7 @@ pub fn mean_rearrive_interval(events: &[RequestEvent]) -> f64 {
                 .expect("events are not in order");
             count += 1;
         }
-        last_access.insert(event.key.clone(), event.timestamp);
+        last_access.insert(event.key, event.timestamp);
     }
 
     if count == 0 {

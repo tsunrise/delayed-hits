@@ -1,4 +1,5 @@
-use clap::Parser;
+use clap::Parser as _;
+use clap_derive::Parser;
 use proj_net::RemoteChannel;
 use tokio::runtime::Runtime;
 

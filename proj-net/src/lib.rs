@@ -71,7 +71,7 @@ impl RemoteChannel {
                 loop {
                     let message = socket_side.recv().await.unwrap();
                     message.to_bytes(&mut buffer.as_mut()).unwrap();
-                    if let Err(_) = writer.write_all(&buffer).await {
+                    if writer.write_all(&buffer).await.is_err() {
                         info!("Connection with {} is closed", peer_addr);
                         break;
                     }
