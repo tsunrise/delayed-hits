@@ -1,0 +1,6 @@
+url = "https://data.caida.org/datasets/passive-2019/equinix-nyc/20190117-130000.UTC/"
+prefix = "equinix-nyc.dirA."
+traces = [
+    "20190117-135200",
+    "20190117-135300",
+]
