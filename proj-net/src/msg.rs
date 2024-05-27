@@ -14,3 +14,15 @@ impl Message {
 }
 
 impl_codec!(Message, key, RequestId);
+
+impl From<RequestId> for Message {
+    fn from(key: RequestId) -> Self {
+        Self { key }
+    }
+}
+
+impl From<Message> for RequestId {
+    fn from(msg: Message) -> Self {
+        msg.key
+    }
+}

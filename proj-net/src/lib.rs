@@ -7,7 +7,7 @@ use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _, BufReader, BufWriter},
     net::TcpStream,
 };
-use tracing::info;
+use tracing::{error, info, warn};
 
 /// A channel that can send and receive messages from a remote endpoint.
 #[derive(Debug, Clone)]
@@ -69,10 +69,19 @@ impl RemoteChannel {
                 };
                 let mut buffer = [0; Message::SIZE_IN_BYTES];
                 loop {
-                    let message = socket_side.recv().await.unwrap();
+                    // let message = socket_side.recv().await.unwrap();
+                    let message = if let Ok(msg) = socket_side.recv().await {
+                        msg
+                    } else {
+                        info!("All messages have been sent. Flushing and sending FIN.");
+                        if writer.flush().await.is_err() {
+                            warn!("Peer {} is closed before flushing", peer_addr);
+                        }
+                        break;
+                    };
                     message.to_bytes(&mut buffer.as_mut()).unwrap();
                     if writer.write_all(&buffer).await.is_err() {
-                        info!("Connection with {} is closed", peer_addr);
+                        error!("Peer {} is closed before sending message", peer_addr);
                         break;
                     }
                 }
@@ -94,9 +103,15 @@ impl RemoteChannel {
                 };
                 let mut buffer = [0; Message::SIZE_IN_BYTES];
                 loop {
-                    if reader.read_exact(&mut buffer).await.is_err() {
-                        info!("Connection with {} is closed", peer_addr);
-                        break;
+                    if let Err(e) = reader.read_exact(&mut buffer).await {
+                        match e.kind() {
+                            std::io::ErrorKind::UnexpectedEof => {
+                                info!("Peer {} is closed", peer_addr);
+                            }
+                            _ => {
+                                error!("Error reading from peer {}: {}", peer_addr, e);
+                            }
+                        }
                     }
                     let message = Message::from_bytes(&mut buffer.as_ref()).unwrap();
                     socket_side.send(message).await.unwrap();

@@ -1,5 +1,5 @@
 [workspace]
 
 members = [ "proj-cache-sim"  
-, "proj-experiments", "proj-models", "proj-net", "proj-preprocess", "proj-toy-origin"]
+, "proj-experiments", "proj-models", "proj-net", "proj-preprocess", "proj-toy-cdn", "proj-toy-origin"]
 resolver = "2"
