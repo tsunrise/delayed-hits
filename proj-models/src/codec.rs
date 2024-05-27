@@ -1,9 +1,12 @@
 use std::io::{Read, Write};
 
-/// A trait for encoding and decoding data.
+/// A trait for encoding and decoding a fixed-size data.
 pub trait Codec {
     type Deserialized: Sized;
-    fn size_in_bytes(&self) -> usize;
+    const SIZE_IN_BYTES: usize;
+    fn size_in_bytes() -> usize {
+        Self::SIZE_IN_BYTES
+    }
     fn to_bytes<W: Write>(&self, writer: W) -> std::io::Result<()>;
     fn from_bytes<R: Read>(reader: R) -> std::io::Result<Self::Deserialized>;
     fn repeat_write_till_end<'a, W, I>(mut writer: W, iter: I) -> std::io::Result<()>
@@ -60,12 +63,10 @@ macro_rules! impl_codec {
     ($struct:ident, $($field:ident, $field_type:ty),+) => {
         // use Codec trait
 
-        impl crate::codec::Codec for $struct {
+        impl $crate::codec::Codec for $struct {
             type Deserialized = Self;
 
-            fn size_in_bytes(&self) -> usize {
-                $(self.$field.size_in_bytes()+)*0
-            }
+            const SIZE_IN_BYTES: usize = {$(<$field_type>::SIZE_IN_BYTES+)*0};
 
             fn to_bytes<W: std::io::Write>(&self, mut writer: W) -> std::io::Result<()> {
                 $(self.$field.to_bytes(&mut writer)?;)*
@@ -86,9 +87,11 @@ macro_rules! impl_codec_for_primitive {
         impl Codec for $t {
             type Deserialized = $t;
 
-            fn size_in_bytes(&self) -> usize {
-                std::mem::size_of::<$t>()
-            }
+            const SIZE_IN_BYTES: usize = std::mem::size_of::<$t>();
+
+            // fn size_in_bytes() -> usize {
+            //     std::mem::size_of::<$t>()
+            // }
 
             fn to_bytes<W: Write>(&self, mut writer: W) -> std::io::Result<()> {
                 writer.write_all(&self.to_le_bytes())
@@ -155,7 +158,6 @@ impl<T: Codec, R: Read> Iterator for ReadWithKnownLenIterator<T, R> {
 
 #[cfg(test)]
 mod tests {
-    use std::io::{Read, Write};
 
     use super::Codec;
 
@@ -171,43 +173,8 @@ mod tests {
         b: u16,
     }
 
-    impl Codec for TestStruct {
-        type Deserialized = Self;
-
-        fn size_in_bytes(&self) -> usize {
-            self.a.size_in_bytes() + self.b.size_in_bytes()
-        }
-
-        fn to_bytes<W: Write>(&self, mut writer: W) -> std::io::Result<()> {
-            self.a.to_bytes(writer.by_ref())?;
-            self.b.to_bytes(writer.by_ref())
-        }
-
-        fn from_bytes<R: Read>(mut reader: R) -> std::io::Result<Self::Deserialized> {
-            let a = u64::from_bytes(&mut reader)?;
-            let b = u32::from_bytes(&mut reader)?;
-            Ok(Self { a, b })
-        }
-    }
-
-    impl Codec for TestStruct2 {
-        type Deserialized = Self;
-
-        fn size_in_bytes(&self) -> usize {
-            self.a.size_in_bytes() + self.b.size_in_bytes()
-        }
-
-        fn to_bytes<W: Write>(&self, mut writer: W) -> std::io::Result<()> {
-            self.a.to_bytes(writer.by_ref())?;
-            self.b.to_bytes(writer.by_ref())
-        }
-
-        fn from_bytes<R: Read>(mut reader: R) -> std::io::Result<Self::Deserialized> {
-            let a = u64::from_bytes(&mut reader)?;
-            let b = u16::from_bytes(&mut reader)?;
-            Ok(Self { a, b })
-        }
-    }
+    impl_codec!(TestStruct, a, u64, b, u32);
+    impl_codec!(TestStruct2, a, u64, b, u16);
 
     #[test]
     fn test_repeat_read_write() {

@@ -19,56 +19,37 @@ pub struct RemoteChannel {
 }
 
 impl RemoteChannel {
-    pub async fn new_as_server<I>(ports: I) -> Self
-    where
-        I: IntoIterator<Item = u16>,
-    {
-        let handles = ports
-            .into_iter()
-            .map(|port| {
-                tokio::spawn(async move {
-                    let listener = tokio::net::TcpListener::bind(("0.0.0.0", port))
-                        .await
-                        .unwrap();
-                    let (stream, remote_addr) = listener.accept().await.unwrap();
-                    info!("Accepted connection from {}", remote_addr);
-                    stream
-                })
-            })
-            .collect::<Vec<_>>();
+    pub async fn new_as_origin_server(port: u16, num_connections: usize) -> Self {
+        let listener = tokio::net::TcpListener::bind(("0.0.0.0", port))
+            .await
+            .unwrap();
+        info!("Listening on port {}", port);
         let mut streams = Vec::new();
-        for handle in handles {
-            streams.push(handle.await.unwrap());
+        for _ in 0..num_connections {
+            let (stream, remote_addr) = listener.accept().await.unwrap();
+            info!("Accepted connection from {}", remote_addr);
+            streams.push(stream);
         }
 
-        Self::from_tcp_streams(streams)
+        Self::from_tcp_streams(streams, true)
     }
 
-    pub async fn new_as_client<I>(ip: Ipv4Addr, ports: I) -> Self
-    where
-        I: IntoIterator<Item = u16>,
-    {
-        let handles = ports
-            .into_iter()
-            .map(|port| {
-                tokio::spawn(async move {
-                    let stream = TcpStream::connect((ip, port)).await.unwrap();
-                    info!("Connected to {}", stream.peer_addr().unwrap());
-                    stream
-                })
-            })
-            .collect::<Vec<_>>();
+    pub async fn new_as_cdn_node(ip: Ipv4Addr, port: u16, num_connections: usize) -> Self {
         let mut streams = Vec::new();
-        for handle in handles {
-            streams.push(handle.await.unwrap());
+        for _ in 0..num_connections {
+            let stream = TcpStream::connect((ip, port)).await.unwrap();
+            streams.push(stream);
         }
 
-        Self::from_tcp_streams(streams)
+        Self::from_tcp_streams(streams, false)
     }
 
-    pub fn from_tcp_streams(streams: Vec<TcpStream>) -> Self {
-        for stream in streams.iter() {
-            stream.set_nodelay(true).unwrap();
+    fn from_tcp_streams(streams: Vec<TcpStream>, is_origin_server: bool) -> Self {
+        if is_origin_server {
+            // because in real case, each server data takes at least one packet to be sent
+            for stream in streams.iter() {
+                stream.set_nodelay(true).unwrap();
+            }
         }
         let (read_sockets, write_sockets): (Vec<_>, Vec<_>) =
             streams.into_iter().map(|s| s.into_split()).unzip();
@@ -78,13 +59,22 @@ impl RemoteChannel {
         for socket in write_sockets.into_iter() {
             let socket_side = socket_side_receiver.clone();
             tokio::spawn(async move {
-                // We want each message take one RTT to be sent and received
-                let mut writer = BufWriter::with_capacity(Message::size_in_bytes(), socket);
+                let peer_addr = socket.peer_addr().unwrap();
+                let mut writer = if is_origin_server {
+                    // make sure each message is sent in one packet
+                    BufWriter::with_capacity(Message::size_in_bytes(), socket)
+                } else {
+                    // cdn node can send requests in batch
+                    BufWriter::new(socket)
+                };
                 let mut buffer = [0; Message::SIZE_IN_BYTES];
                 loop {
                     let message = socket_side.recv().await.unwrap();
                     message.to_bytes(&mut buffer.as_mut()).unwrap();
-                    writer.write_all(&buffer).await.unwrap();
+                    if let Err(_) = writer.write_all(&buffer).await {
+                        info!("Connection with {} is closed", peer_addr);
+                        break;
+                    }
                 }
             });
         }
@@ -94,10 +84,20 @@ impl RemoteChannel {
         for socket in read_sockets.into_iter() {
             let socket_side = socket_side_sender.clone();
             tokio::spawn(async move {
-                let mut reader = BufReader::with_capacity(Message::size_in_bytes(), socket);
+                let peer_addr = socket.peer_addr().unwrap();
+                let mut reader = if !is_origin_server {
+                    // cdn node should report the response as long as it receives it
+                    BufReader::with_capacity(Message::size_in_bytes(), socket)
+                } else {
+                    // origin server can receive requests in batch
+                    BufReader::new(socket)
+                };
                 let mut buffer = [0; Message::SIZE_IN_BYTES];
                 loop {
-                    reader.read_exact(&mut buffer).await.unwrap();
+                    if reader.read_exact(&mut buffer).await.is_err() {
+                        info!("Connection with {} is closed", peer_addr);
+                        break;
+                    }
                     let message = Message::from_bytes(&mut buffer.as_ref()).unwrap();
                     socket_side.send(message).await.unwrap();
                 }
@@ -110,11 +110,11 @@ impl RemoteChannel {
         }
     }
 
-    pub async fn send(&self, message: Message) {
-        self.sender.send(message).await.unwrap();
+    pub async fn send(&self, message: Message) -> Result<(), async_channel::SendError<Message>> {
+        self.sender.send(message).await
     }
 
-    pub async fn recv(&self) -> Message {
-        self.receiver.recv().await.unwrap()
+    pub async fn recv(&self) -> Result<Message, async_channel::RecvError> {
+        self.receiver.recv().await
     }
 }

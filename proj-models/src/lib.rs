@@ -1,5 +1,4 @@
 pub mod codec;
-pub mod msg;
 pub mod storage;
 
 use std::fmt::Debug;

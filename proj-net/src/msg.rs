@@ -1,7 +1,6 @@
 //! Message on TCP stream.
 
 use proj_models::{impl_codec, RequestId};
-use tokio::io::AsyncRead;
 
 #[derive(Debug, Eq, PartialEq, Clone, Copy)]
 pub struct Message {
