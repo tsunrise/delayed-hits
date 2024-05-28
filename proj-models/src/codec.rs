@@ -1,8 +1,38 @@
-use std::io::{Read, Write};
+use std::{
+    io::{Read, Write},
+    ops::Add,
+};
+
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub enum CodecSize {
+    Static(usize),
+    Dynamic,
+}
+
+impl CodecSize {
+    pub const fn add_const(self, rhs: CodecSize) -> CodecSize {
+        match (self, rhs) {
+            (CodecSize::Static(a), CodecSize::Static(b)) => CodecSize::Static(a + b),
+            _ => CodecSize::Dynamic,
+        }
+    }
+}
+
+impl Add<CodecSize> for CodecSize {
+    type Output = CodecSize;
+
+    fn add(self, rhs: CodecSize) -> Self::Output {
+        self.add_const(rhs)
+    }
+}
 
 /// A trait for encoding and decoding a fixed-size data.
 pub trait Codec {
     type Deserialized: Sized;
+    /// compile-time size of the data
+    // fn size_in_bytes_compile_time() -> CodecSize;
+    const SIZE_IN_BYTES: CodecSize;
+    /// runtime size of the data
     fn size_in_bytes(&self) -> usize;
     fn to_bytes<W: Write>(&self, writer: W) -> std::io::Result<()>;
     fn from_bytes<R: Read>(reader: R) -> std::io::Result<Self::Deserialized>;
@@ -61,6 +91,12 @@ macro_rules! impl_codec {
         impl $crate::codec::Codec for $struct {
             type Deserialized = Self;
 
+            const SIZE_IN_BYTES: $crate::codec::CodecSize = {
+                let mut size = $crate::codec::CodecSize::Static(0);
+                $(size = size.add_const(<$field_type>::SIZE_IN_BYTES);)*
+                size
+            };
+
             fn size_in_bytes(&self) -> usize {
                 $(self.$field.size_in_bytes() +)* 0
             }
@@ -83,6 +119,8 @@ macro_rules! impl_codec_for_primitive {
     ($t:ty) => {
         impl Codec for $t {
             type Deserialized = $t;
+
+            const SIZE_IN_BYTES: CodecSize = CodecSize::Static(std::mem::size_of::<$t>());
 
             fn size_in_bytes(&self) -> usize {
                 std::mem::size_of::<$t>()
@@ -109,6 +147,8 @@ impl_codec_for_primitive!(u64);
 impl<T: Codec> Codec for [T] {
     type Deserialized = Vec<T::Deserialized>;
 
+    const SIZE_IN_BYTES: CodecSize = CodecSize::Dynamic;
+
     fn size_in_bytes(&self) -> usize {
         self.iter().map(|v| v.size_in_bytes()).sum::<usize>() + std::mem::size_of::<u64>()
     }
@@ -130,6 +170,8 @@ impl<T: Codec> Codec for [T] {
 
 impl<T: Codec> Codec for Vec<T> {
     type Deserialized = Vec<T::Deserialized>;
+
+    const SIZE_IN_BYTES: CodecSize = CodecSize::Dynamic;
 
     fn size_in_bytes(&self) -> usize {
         self.as_slice().size_in_bytes()
@@ -212,9 +254,18 @@ mod tests {
         c: u8,
     }
 
+    #[derive(Debug, Eq, PartialEq)]
+    struct TestStruct4 {
+        a: u64,
+        b: u64,
+        c: Vec<u64>,
+        d: u64,
+    }
+
     impl_codec!(TestStruct, a, u64, b, u32);
     impl_codec!(TestStruct2, a, u64, b, u16);
     impl_codec!(TestStruct3, a, u64, b, u64, c, u8);
+    impl_codec!(TestStruct4, a, u64, b, u64, c, Vec<u64>, d, u64);
 
     #[test]
     fn test_repeat_read_write() {
@@ -248,5 +299,21 @@ mod tests {
         assert_eq!(lst, lst1_actual);
         assert_eq!(lst2, lst2_actual);
         assert_eq!(lst3, lst3_actual);
+
+        let struct4 = TestStruct4 {
+            a: 1,
+            b: 2,
+            c: vec![1, 2, 3],
+            d: 4,
+        };
+
+        assert_eq!(TestStruct::SIZE_IN_BYTES, super::CodecSize::Static(8 + 4));
+        assert_eq!(TestStruct2::SIZE_IN_BYTES, super::CodecSize::Static(8 + 2));
+        assert_eq!(
+            TestStruct3::SIZE_IN_BYTES,
+            super::CodecSize::Static(8 + 8 + 1)
+        );
+        assert_eq!(TestStruct4::SIZE_IN_BYTES, super::CodecSize::Dynamic);
+        assert_eq!(struct4.size_in_bytes(), 3 * 8 + 8 + 3 * 8);
     }
 }
