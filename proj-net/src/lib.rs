@@ -3,6 +3,8 @@ use std::net::Ipv4Addr;
 
 use msg::Message;
 use proj_models::codec::Codec;
+use smallvec::SmallVec;
+use thiserror::Error;
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _, BufReader, BufWriter},
     net::TcpStream,
@@ -19,7 +21,16 @@ pub struct RemoteChannel {
 }
 
 impl RemoteChannel {
-    pub async fn new_as_origin_server(port: u16, num_connections: usize) -> Self {
+    pub async fn new(mode: ConnectionMode, num_connections: usize) -> Self {
+        match mode {
+            ConnectionMode::Server(port) => Self::new_as_server(port, num_connections).await,
+            ConnectionMode::Client(ip, port) => {
+                Self::new_as_client(ip, port, num_connections).await
+            }
+        }
+    }
+
+    pub async fn new_as_server(port: u16, num_connections: usize) -> Self {
         let listener = tokio::net::TcpListener::bind(("0.0.0.0", port))
             .await
             .unwrap();
@@ -31,26 +42,20 @@ impl RemoteChannel {
             streams.push(stream);
         }
 
-        Self::from_tcp_streams(streams, true)
+        Self::from_tcp_streams(streams)
     }
 
-    pub async fn new_as_cdn_node(ip: Ipv4Addr, port: u16, num_connections: usize) -> Self {
+    pub async fn new_as_client(ip: Ipv4Addr, port: u16, num_connections: usize) -> Self {
         let mut streams = Vec::new();
         for _ in 0..num_connections {
             let stream = TcpStream::connect((ip, port)).await.unwrap();
             streams.push(stream);
         }
 
-        Self::from_tcp_streams(streams, false)
+        Self::from_tcp_streams(streams)
     }
 
-    fn from_tcp_streams(streams: Vec<TcpStream>, is_origin_server: bool) -> Self {
-        if is_origin_server {
-            // because in real case, each server data takes at least one packet to be sent
-            for stream in streams.iter() {
-                stream.set_nodelay(true).unwrap();
-            }
-        }
+    fn from_tcp_streams(streams: Vec<TcpStream>) -> Self {
         let (read_sockets, write_sockets): (Vec<_>, Vec<_>) =
             streams.into_iter().map(|s| s.into_split()).unzip();
 
@@ -60,14 +65,8 @@ impl RemoteChannel {
             let socket_side = socket_side_receiver.clone();
             tokio::spawn(async move {
                 let peer_addr = socket.peer_addr().unwrap();
-                let mut writer = if is_origin_server {
-                    // make sure each message is sent in one packet
-                    BufWriter::with_capacity(Message::size_in_bytes(), socket)
-                } else {
-                    // cdn node can send requests in batch
-                    BufWriter::new(socket)
-                };
-                let mut buffer = [0; Message::SIZE_IN_BYTES];
+                let mut writer = BufWriter::new(socket);
+                let mut buffer = SmallVec::<[u8; 64]>::new();
                 loop {
                     // let message = socket_side.recv().await.unwrap();
                     let message = if let Ok(msg) = socket_side.recv().await {
@@ -79,7 +78,7 @@ impl RemoteChannel {
                         }
                         break;
                     };
-                    message.to_bytes(&mut buffer.as_mut()).unwrap();
+                    message.to_bytes(&mut buffer).unwrap();
                     if writer.write_all(&buffer).await.is_err() {
                         error!("Peer {} is closed before sending message", peer_addr);
                         break;
@@ -94,14 +93,8 @@ impl RemoteChannel {
             let socket_side = socket_side_sender.clone();
             tokio::spawn(async move {
                 let peer_addr = socket.peer_addr().unwrap();
-                let mut reader = if !is_origin_server {
-                    // cdn node should report the response as long as it receives it
-                    BufReader::with_capacity(Message::size_in_bytes(), socket)
-                } else {
-                    // origin server can receive requests in batch
-                    BufReader::new(socket)
-                };
-                let mut buffer = [0; Message::SIZE_IN_BYTES];
+                let mut reader = BufReader::new(socket);
+                let mut buffer = SmallVec::<[u8; 64]>::new();
                 loop {
                     if let Err(e) = reader.read_exact(&mut buffer).await {
                         match e.kind() {
@@ -131,5 +124,47 @@ impl RemoteChannel {
 
     pub async fn recv(&self) -> Result<Message, async_channel::RecvError> {
         self.receiver.recv().await
+    }
+}
+
+#[derive(Debug, Clone)]
+pub enum ConnectionMode {
+    Server(u16),
+    Client(Ipv4Addr, u16),
+}
+
+#[derive(Error, Debug)]
+pub enum ParseConnectionModeError {
+    #[error("Invalid port: {0}")]
+    InvalidPort(std::num::ParseIntError),
+    #[error("Invalid IP address: {0}")]
+    InvalidIpAddr(std::net::AddrParseError),
+    #[error("Invalid connection mode: {0}")]
+    InvalidConnectionMode(String),
+}
+
+/// - `<ipv4_addr>:<port>`: as client, connect to the server at `<ipv4_addr>:<port>`
+/// - `<port>`: as server, listen on all interfaces at `<port>`
+pub fn parse_connection_mode(mode: &str) -> Result<ConnectionMode, ParseConnectionModeError> {
+    let parts: Vec<&str> = mode.split(':').collect();
+    match parts.len() {
+        1 => {
+            let port = parts[0]
+                .parse()
+                .map_err(ParseConnectionModeError::InvalidPort)?;
+            Ok(ConnectionMode::Server(port))
+        }
+        2 => {
+            let ip = parts[0]
+                .parse()
+                .map_err(ParseConnectionModeError::InvalidIpAddr)?;
+            let port = parts[1]
+                .parse()
+                .map_err(ParseConnectionModeError::InvalidPort)?;
+            Ok(ConnectionMode::Client(ip, port))
+        }
+        _ => Err(ParseConnectionModeError::InvalidConnectionMode(
+            mode.to_string(),
+        )),
     }
 }

@@ -3,10 +3,7 @@ use std::io::{Read, Write};
 /// A trait for encoding and decoding a fixed-size data.
 pub trait Codec {
     type Deserialized: Sized;
-    const SIZE_IN_BYTES: usize;
-    fn size_in_bytes() -> usize {
-        Self::SIZE_IN_BYTES
-    }
+    fn size_in_bytes(&self) -> usize;
     fn to_bytes<W: Write>(&self, writer: W) -> std::io::Result<()>;
     fn from_bytes<R: Read>(reader: R) -> std::io::Result<Self::Deserialized>;
     fn repeat_write_till_end<'a, W, I>(mut writer: W, iter: I) -> std::io::Result<()>
@@ -64,7 +61,9 @@ macro_rules! impl_codec {
         impl $crate::codec::Codec for $struct {
             type Deserialized = Self;
 
-            const SIZE_IN_BYTES: usize = {$(<$field_type>::SIZE_IN_BYTES+)*0};
+            fn size_in_bytes(&self) -> usize {
+                $(self.$field.size_in_bytes() +)* 0
+            }
 
             fn to_bytes<W: std::io::Write>(&self, mut writer: W) -> std::io::Result<()> {
                 $(self.$field.to_bytes(&mut writer)?;)*
@@ -85,11 +84,9 @@ macro_rules! impl_codec_for_primitive {
         impl Codec for $t {
             type Deserialized = $t;
 
-            const SIZE_IN_BYTES: usize = std::mem::size_of::<$t>();
-
-            // fn size_in_bytes() -> usize {
-            //     std::mem::size_of::<$t>()
-            // }
+            fn size_in_bytes(&self) -> usize {
+                std::mem::size_of::<$t>()
+            }
 
             fn to_bytes<W: Write>(&self, mut writer: W) -> std::io::Result<()> {
                 writer.write_all(&self.to_le_bytes())
@@ -108,6 +105,44 @@ impl_codec_for_primitive!(u8);
 impl_codec_for_primitive!(u16);
 impl_codec_for_primitive!(u32);
 impl_codec_for_primitive!(u64);
+
+impl<T: Codec> Codec for [T] {
+    type Deserialized = Vec<T::Deserialized>;
+
+    fn size_in_bytes(&self) -> usize {
+        self.iter().map(|v| v.size_in_bytes()).sum::<usize>() + std::mem::size_of::<u64>()
+    }
+
+    fn to_bytes<W: Write>(&self, writer: W) -> std::io::Result<()> {
+        T::repeat_write_with_known_len(writer, self, self.len())
+    }
+
+    fn from_bytes<R: Read>(mut reader: R) -> std::io::Result<Self::Deserialized> {
+        let mut len = u64::from_bytes(&mut reader)? as usize;
+        let mut vec = Vec::with_capacity(len);
+        while len > 0 {
+            vec.push(T::from_bytes(&mut reader)?);
+            len -= 1;
+        }
+        Ok(vec)
+    }
+}
+
+impl<T: Codec> Codec for Vec<T> {
+    type Deserialized = Vec<T::Deserialized>;
+
+    fn size_in_bytes(&self) -> usize {
+        self.as_slice().size_in_bytes()
+    }
+
+    fn to_bytes<W: Write>(&self, mut writer: W) -> std::io::Result<()> {
+        self.as_slice().to_bytes(&mut writer)
+    }
+
+    fn from_bytes<R: Read>(mut reader: R) -> std::io::Result<Self::Deserialized> {
+        <[T]>::from_bytes(&mut reader)
+    }
+}
 
 pub struct ReadTillEndIterator<T: Codec, R: Read> {
     reader: R,
@@ -170,9 +205,16 @@ mod tests {
         a: u64,
         b: u16,
     }
+    #[derive(Debug, Eq, PartialEq)]
+    struct TestStruct3 {
+        a: u64,
+        b: u64,
+        c: u8,
+    }
 
     impl_codec!(TestStruct, a, u64, b, u32);
     impl_codec!(TestStruct2, a, u64, b, u16);
+    impl_codec!(TestStruct3, a, u64, b, u64, c, u8);
 
     #[test]
     fn test_repeat_read_write() {
@@ -182,17 +224,29 @@ mod tests {
         let lst2 = (118..192)
             .map(|i| TestStruct2 { a: i, b: i as u16 })
             .collect::<Vec<_>>();
+        let lst3 = (0..100)
+            .map(|i| TestStruct3 {
+                a: i,
+                b: i as u64,
+                c: i as u8,
+            })
+            .collect::<Vec<_>>();
         let mut buf = Vec::new();
         TestStruct::repeat_write_with_known_len(&mut buf, &lst, lst.len()).unwrap();
-        TestStruct2::repeat_write_till_end(&mut buf, &lst2).unwrap();
+        lst2.to_bytes(&mut buf).unwrap();
+        TestStruct3::repeat_write_till_end(&mut buf, &lst3).unwrap();
+
         let mut reader = std::io::Cursor::new(buf);
-        let read_lst1 = TestStruct::repeat_read_with_known_len(&mut reader)
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        let read_lst2 = TestStruct2::repeat_read_till_end(reader)
-            .collect::<Result<Vec<_>, _>>()
-            .unwrap();
-        assert_eq!(lst, read_lst1);
-        assert_eq!(lst2, read_lst2);
+        let lst1_actual = TestStruct::repeat_read_with_known_len(&mut reader)
+            .map(|r| r.unwrap())
+            .collect::<Vec<_>>();
+        let lst2_actual = Vec::<TestStruct2>::from_bytes(&mut reader).unwrap();
+        let lst3_actual = TestStruct3::repeat_read_till_end(&mut reader)
+            .map(|r| r.unwrap())
+            .collect::<Vec<_>>();
+
+        assert_eq!(lst, lst1_actual);
+        assert_eq!(lst2, lst2_actual);
+        assert_eq!(lst3, lst3_actual);
     }
 }
