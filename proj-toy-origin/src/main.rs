@@ -27,18 +27,26 @@ async fn async_main() {
         args.num_connections,
     )
     .await;
+    let mut handles = Vec::new();
     while let Ok(msg) = chan.recv().await {
         let chan = chan.clone();
-        tokio::spawn(async move {
+        let handle = tokio::spawn(async move {
             let mut rng = XorShiftRng::from_rng(rand::thread_rng()).unwrap();
             let mut payload = FixedSizeResponsePayload::default();
             rng.fill(&mut payload.content[..]);
             let response = OriginResponseMessage::new(msg.key, payload);
-            let handle = chan.send(response).await;
-            assert!(handle.wait().await);
-            chan.flush().await;
+            assert!(chan.send(response).await.wait().await);
         });
+        handles.push(handle);
     }
+    info!("client closed sending");
+    for handle in handles {
+        handle.await.unwrap();
+    }
+    chan.flush().await;
+
+    drop(chan);
+    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
 }
 
 fn main() {

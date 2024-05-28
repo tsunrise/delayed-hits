@@ -10,7 +10,7 @@ use tokio::{
 };
 use tracing::{error, info, trace, warn};
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Control {
     FlushWrite,
 }
@@ -84,6 +84,7 @@ where
     }
 
     fn from_tcp_streams(streams: Vec<TcpStream>) -> Self {
+        streams.iter().for_each(|s| s.set_nodelay(true).unwrap());
         let (read_sockets, write_sockets): (Vec<_>, Vec<_>) =
             streams.into_iter().map(|s| s.into_split()).unzip();
 
@@ -92,19 +93,23 @@ where
             async_channel::unbounded::<(S, tokio::sync::oneshot::Sender<bool>)>();
         let (user_side_control_sender, socket_side_control_receiver) =
             tokio::sync::broadcast::channel(1);
+
+        let mut task_handles = Vec::new();
         for socket in write_sockets.into_iter() {
             let socket_side = socket_side_receiver.clone();
             let mut control_receiver = socket_side_control_receiver.resubscribe();
-            tokio::spawn(async move {
+            let task_handle = tokio::spawn(async move {
                 let peer_addr = socket.peer_addr().unwrap();
-                let mut writer = BufWriter::new(socket);
+                let mut writer =
+                    // BufWriter::with_capacity(S::SIZE_IN_BYTES.get_size_or_panic() * 64, socket);
+                    BufWriter::new(socket);
                 let mut buffer =
                     SmallVec::<[u8; 64]>::from_elem(0, S::SIZE_IN_BYTES.get_size_or_panic());
                 loop {
                     let message = tokio::select! {
                         message = socket_side.recv() => message,
                         _ = control_receiver.recv() => {
-                            info!("Flushing writer for peer {}", peer_addr);
+                            trace!("Flushing writer for peer {}", peer_addr);
                             if writer.flush().await.is_err() {
                                 warn!("Peer {} is closed before flushing", peer_addr);
                             }
@@ -131,6 +136,7 @@ where
                     trace!("Sent message");
                 }
             });
+            task_handles.push(task_handle);
         }
 
         // socket, when receiving a message from the remote endpoint, send it to the user
@@ -138,9 +144,11 @@ where
             async_channel::unbounded::<R::Deserialized>();
         for socket in read_sockets.into_iter() {
             let socket_side = socket_side_sender.clone();
-            tokio::spawn(async move {
+            let task_handle = tokio::spawn(async move {
                 let peer_addr = socket.peer_addr().unwrap();
-                let mut reader = BufReader::new(socket);
+                let mut reader =
+                    // BufReader::with_capacity(R::SIZE_IN_BYTES.get_size_or_panic() * 64, socket);
+                    BufReader::new(socket);
                 let mut buffer =
                     SmallVec::<[u8; 64]>::from_elem(0, R::SIZE_IN_BYTES.get_size_or_panic());
                 loop {
@@ -161,6 +169,7 @@ where
                     socket_side.send(message).await.unwrap();
                 }
             });
+            task_handles.push(task_handle);
         }
 
         Self {
@@ -187,6 +196,14 @@ where
         } else {
             error!("Failed to send control message")
         }
+    }
+
+    pub async fn close_send(&self) {
+        self.sender.close();
+    }
+
+    pub async fn close_recv(&self) {
+        self.receiver.close();
     }
 
     pub async fn recv(&self) -> Result<R::Deserialized, async_channel::RecvError> {

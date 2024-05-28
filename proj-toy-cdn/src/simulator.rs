@@ -20,21 +20,21 @@ struct LocalState<C> {
     requests_in_progress: AHashMap<u64, Vec<TimeUnit>>,
 }
 
-struct Clock {
+pub struct Clock {
     start_time: Instant,
 }
 
 impl Clock {
-    fn tick(irt_ns: u64) -> Self {
+    pub fn tick() -> Self {
         let start_time = Instant::now();
         Self { start_time }
     }
 
-    fn start_time(&self) -> Instant {
+    pub fn start_time(&self) -> Instant {
         self.start_time
     }
 
-    async fn wait_until_next_available(self, irt_ns: u64) {
+    pub async fn wait_until_next_available(self, irt_ns: u64) {
         // tokio::sleep is not accurate enough for capturing microsecond-level time.
         while (self.start_time.elapsed().as_nanos() as u64) < irt_ns {
             tokio::task::yield_now().await;
@@ -105,7 +105,7 @@ where
         let origin = origin.clone();
         tokio::spawn(async move {
             for request in requests {
-                let clock = Clock::tick(irt_ns);
+                let clock = Clock::tick();
                 // let timestamp = start_of_time.elapsed().as_nanos() as TimeUnit;
                 let timestamp = (clock.start_time() - start_of_time).as_nanos() as TimeUnit;
 

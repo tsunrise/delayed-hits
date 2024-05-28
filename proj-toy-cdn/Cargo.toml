@@ -8,6 +8,7 @@ edition = "2021"
 ahash = "0.8.11"
 clap = "4.5.4"
 clap_derive = "4.5.4"
+npy = "0.4.0"
 proj-cache-sim = { version = "0.1.0", path = "../proj-cache-sim" }
 proj-models = { version = "0.1.0", path = "../proj-models" }
 proj-net = { version = "0.1.0", path = "../proj-net" }

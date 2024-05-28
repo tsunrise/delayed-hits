@@ -64,15 +64,17 @@ impl<const N: usize> Default for FixedSizeResponsePayload<N> {
     }
 }
 
+const PAYLOAD_SIZE: usize = 8; // TODO: 250000 * (8+8) is much faster than 500000 * (8+0)??
+
 #[derive(Debug, Eq, PartialEq, Clone)]
 pub struct OriginResponseMessage {
     pub key: RequestId,
     // 1KB payload
-    pub payload: FixedSizeResponsePayload<1024>,
+    pub payload: FixedSizeResponsePayload<PAYLOAD_SIZE>,
 }
 
 impl OriginResponseMessage {
-    pub fn new(key: RequestId, payload: FixedSizeResponsePayload<1024>) -> Self {
+    pub fn new(key: RequestId, payload: FixedSizeResponsePayload<PAYLOAD_SIZE>) -> Self {
         Self { key, payload }
     }
 }
@@ -82,5 +84,5 @@ impl_codec!(
     key,
     RequestId,
     payload,
-    FixedSizeResponsePayload<1024>
+    FixedSizeResponsePayload<PAYLOAD_SIZE>
 );

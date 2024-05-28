@@ -1,5 +1,7 @@
 //! Utilities for calculating the optimal cache size for a given workload.
 
+use std::fmt::Display;
+
 use ahash::{AHashMap, AHashSet};
 use proj_models::RequestEvent;
 
@@ -57,15 +59,15 @@ pub fn mean_rearrive_interval(events: &[RequestEvent]) -> f64 {
     }
 }
 
-pub struct IrtStatistics {
-    /// buckets[i]: 10^i <= irt < 10^(i+1)
+pub struct TimingStatistics {
+    /// buckets[i]: 10^i <= timing < 10^(i+1)
     pub buckets: [u64; 10],
     pub total: u128,
     pub count: u64,
 }
 
-impl IrtStatistics {
-    fn new() -> Self {
+impl TimingStatistics {
+    pub fn new() -> Self {
         Self {
             buckets: [0; 10],
             total: 0,
@@ -73,10 +75,10 @@ impl IrtStatistics {
         }
     }
 
-    fn add(&mut self, irt: u64) {
-        self.total += irt as u128;
+    pub fn add(&mut self, time: u64) {
+        self.total += time as u128;
         self.count += 1;
-        let mut c = irt;
+        let mut c = time;
         let mut bucket = 0;
         while c >= 10 && bucket < 9 {
             c /= 10;
@@ -90,9 +92,16 @@ impl IrtStatistics {
     }
 }
 
+impl Display for TimingStatistics {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        write!(f, "mean: {}, ", self.mean())?;
+        write!(f, "distribution: {:?}", self.buckets)
+    }
+}
+
 /// Get the inter-request time of the workload
-pub fn get_irt(events: &[RequestEvent]) -> IrtStatistics {
-    let mut irt = IrtStatistics::new();
+pub fn get_irt(events: &[RequestEvent]) -> TimingStatistics {
+    let mut irt = TimingStatistics::new();
     let mut last_timestamp = 0;
     for event in events {
         if event.timestamp < last_timestamp {

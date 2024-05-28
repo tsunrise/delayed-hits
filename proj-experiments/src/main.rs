@@ -23,7 +23,7 @@ fn get_time_string(nanos: u128) -> String {
     }
 }
 
-fn print_irt_stats(irt_stat: &heuristics::IrtStatistics) {
+fn print_irt_stats(irt_stat: &heuristics::TimingStatistics) {
     println!(
         "Mean inter-request time: {}",
         get_time_string(irt_stat.mean() as u128)
