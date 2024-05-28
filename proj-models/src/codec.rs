@@ -61,8 +61,6 @@ pub trait Codec {
 #[macro_export]
 macro_rules! impl_codec {
     ($struct:ident, $($field:ident, $field_type:ty),+) => {
-        // use Codec trait
-
         impl $crate::codec::Codec for $struct {
             type Deserialized = Self;
 

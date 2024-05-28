@@ -67,6 +67,8 @@ struct ExperimentResult {
     average_latency_lru: f64,
     total_latency_lru_mad: u128,
     average_latency_lru_mad: f64,
+    num_loads_lru: usize,
+    num_loads_lru_mad: usize,
     improvement: f64,
     cache_counts: usize,
     cache_capacity: usize,
@@ -81,8 +83,10 @@ impl Display for ExperimentResult {
             "k: {}, c: {}, miss_latency: {}\n\
             total latency (lru): {}\n\
             average latency (lru): {}\n\
+            num loads (lru): {}\n\
             total latency (lru-mad): {}\n\
             average latency (lru-mad): {}\n\
+            num loads (lru-mad): {}\n\
             improvement (%): {}\n\
             CSV: {}, {}, {}, {}, {}, {}",
             self.cache_counts,
@@ -90,8 +94,10 @@ impl Display for ExperimentResult {
             self.miss_latency,
             self.total_latency_lru,
             self.average_latency_lru,
+            self.num_loads_lru,
             self.total_latency_lru_mad,
             self.average_latency_lru_mad,
+            self.num_loads_lru_mad,
             self.improvement * 100.0,
             self.cache_counts,
             self.cache_capacity,
@@ -128,7 +134,7 @@ fn run_experiment(
         run_simulation(&mut lru, data::load_data(requests_path), miss_latency)
     };
 
-    let stats = compute_statistics(&request_results_lru);
+    let stats = compute_statistics(&request_results_lru.results[warmup..]);
     let lru_avg_latency = stats.average_latency;
 
     let mut lru_mad = construct_k_way_cache(cache_counts, |_| {
@@ -144,7 +150,7 @@ fn run_experiment(
         run_simulation(&mut lru_mad, data::load_data(requests_path), miss_latency)
     };
 
-    let stats = compute_statistics(&request_results_lru_mad[warmup..]);
+    let stats = compute_statistics(&request_results_lru_mad.results[warmup..]);
     let lru_mad_avg_latency = stats.average_latency;
 
     let improvement = (lru_avg_latency - lru_mad_avg_latency) / lru_avg_latency;
@@ -152,8 +158,10 @@ fn run_experiment(
     ExperimentResult {
         total_latency_lru: stats.total_latency,
         average_latency_lru: lru_avg_latency,
+        num_loads_lru: request_results_lru.num_of_loads,
         total_latency_lru_mad: stats.total_latency,
         average_latency_lru_mad: lru_mad_avg_latency,
+        num_loads_lru_mad: request_results_lru_mad.num_of_loads,
         improvement,
         cache_counts,
         cache_capacity,

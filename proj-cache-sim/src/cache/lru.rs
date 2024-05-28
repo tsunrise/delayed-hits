@@ -94,7 +94,7 @@ mod tests {
         .iter()
         .map(|&(key, timestamp)| RequestEvent { key, timestamp })
         .collect::<Vec<_>>();
-        let mut results = run_simulation(&mut cache, requests, delay);
+        let mut results = run_simulation(&mut cache, requests, delay).results;
         results.sort_by_key(|r| r.request_timestamp);
         assert_eq!(
             results,

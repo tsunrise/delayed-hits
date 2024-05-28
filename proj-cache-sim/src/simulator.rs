@@ -74,13 +74,17 @@ where
     }
 }
 
+pub struct SimulationResult {
+    pub results: Vec<RequestResult>,
+    pub last_event_timestamp: TimeUnit,
+    pub num_of_loads: usize,
+}
+
 /// Run a delay-aware cache simulation, given a `caches.len()`-Way set associative cache and a sequence of requests. Return a vector of `RequestResult`.
 /// - `miss_penalty` is the time in nanoseconds it takes to fetch a missed request from the backing store.
-pub fn run_simulation<C, I>(
-    cache: &mut C,
-    requests: I,
-    miss_latency: TimeUnit,
-) -> Vec<RequestResult>
+///
+/// Return the request results, and the timestamp of the last event.
+pub fn run_simulation<C, I>(cache: &mut C, requests: I, miss_latency: TimeUnit) -> SimulationResult
 where
     C: Cache<u64, ()>,
     I: IntoIterator<Item = RequestEvent>,
@@ -94,7 +98,9 @@ where
 
     // In case the request are occasionally out of order, we use timestamp = max(last_request_timestamp, request_timestamp) as the timestamp of the request.
     let mut last_request_timestamp = 0;
+    let mut last_event_timestamp = 0;
     let mut requests = requests.into_iter().peekable();
+    let mut num_of_loads = 0;
 
     loop {
         let event = next_event(
@@ -123,6 +129,7 @@ where
                     }
                     requests_in_progress.get_mut(&key).unwrap().push(timestamp);
                 }
+                last_event_timestamp = timestamp;
             }
             Event::Completion(key, timestamp) => {
                 debug_assert!(!cache.contains(&key), "{key:?} should not in the cache until the completion of the request, but it is.");
@@ -142,11 +149,19 @@ where
                         completion_timestamp: timestamp,
                     });
                 });
+                last_event_timestamp = timestamp;
+                num_of_loads += 1;
             }
         }
     }
 
-    results
+    results.sort_by_key(|r| r.request_timestamp);
+
+    SimulationResult {
+        results,
+        last_event_timestamp,
+        num_of_loads,
+    }
 }
 
 #[derive(Debug, Clone)]
