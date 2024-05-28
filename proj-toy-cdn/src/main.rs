@@ -50,7 +50,7 @@ struct Args {
     num_measure_rounds: usize,
 }
 
-async fn async_main() {
+async fn measurement() {
     let args = Args::parse();
     tracing_subscriber::fmt()
         .with_max_level(tracing::Level::INFO)
@@ -68,10 +68,10 @@ async fn async_main() {
     let mut starts = Vec::new();
     let mut handles = Vec::new();
     for idx in 0..args.num_measure_rounds {
-        let clock = Clock::tick();
+        // let clock = Clock::tick();
         starts.push(std::time::Instant::now());
         handles.push(chan.send(CdnRequestMessage::new(idx as u64)).await);
-        clock.wait_until_next_available(1000).await; // TODO: try increase this
+        // clock.wait_until_next_available(1000).await; // TODO: try increase this
     }
     {
         let chan = chan.clone();
@@ -112,17 +112,22 @@ async fn async_main() {
         .sum::<u64>() as f64
         / args.num_measure_rounds as f64;
 
+    info!(
+        "Starts: {:?}",
+        starts_ns.iter().take(10).collect::<Vec<_>>()
+    );
+    info!("Ends: {:?}", ends_ns.iter().take(10).collect::<Vec<_>>());
     info!("Average inter-request time: {} ns", average_i_request_t);
     info!("Average inter-response time: {} ns", average_i_response_t);
     info!("Average delay: {} ns", average_delay);
 
     npy::to_file("request_timestamps.npy", starts_ns).unwrap();
-    npy::to_file("reponse_timestamps.npy", ends_ns).unwrap();
+    npy::to_file("response_timestamps.npy", ends_ns).unwrap();
 }
 
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     runtime.block_on(async {
-        async_main().await;
+        measurement().await;
     })
 }

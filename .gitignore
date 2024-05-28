@@ -16,3 +16,6 @@ Cargo.lock
 .vscode
 
 .DS_Store
+
+*.npy
+*.png
