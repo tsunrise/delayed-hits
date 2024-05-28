@@ -1,7 +1,6 @@
 pub mod msg;
 use std::net::Ipv4Addr;
 
-use msg::Message;
 use proj_models::codec::Codec;
 use smallvec::SmallVec;
 use thiserror::Error;
@@ -9,18 +8,47 @@ use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _, BufReader, BufWriter},
     net::TcpStream,
 };
-use tracing::{error, info, warn};
+use tracing::{error, info, trace, warn};
 
-/// A channel that can send and receive messages from a remote endpoint.
-#[derive(Debug, Clone)]
-pub struct RemoteChannel {
-    /// Local -> one of the sockets
-    sender: async_channel::Sender<Message>,
-    /// One of the sockets -> local
-    receiver: async_channel::Receiver<Message>,
+#[derive(Debug, Clone, Copy)]
+enum Control {
+    FlushWrite,
 }
 
-impl RemoteChannel {
+pub struct CompletionHandle {
+    receiver: tokio::sync::oneshot::Receiver<bool>,
+}
+
+impl CompletionHandle {
+    /// Wait and return whether the message has been sent successfully.
+    pub async fn wait(self) -> bool {
+        self.receiver.await.unwrap()
+    }
+}
+
+/// A channel that can send and receive messages from a remote endpoint.
+/// - `S`: the type of the message sent from the local endpoint to the remote endpoint
+/// - `R`: the type of the message sent from the remote endpoint to the local endpoint
+#[derive(Debug, Clone)]
+pub struct RemoteChannel<S, R>
+where
+    S: Codec,
+    R: Codec,
+{
+    /// Local -> one of the sockets
+    sender: async_channel::Sender<(S, tokio::sync::oneshot::Sender<bool>)>,
+    /// Local -> All sockets
+    sender_control: tokio::sync::broadcast::Sender<Control>,
+    /// One of the sockets -> local
+    receiver: async_channel::Receiver<R::Deserialized>,
+}
+
+impl<S, R> RemoteChannel<S, R>
+where
+    S: Codec + Send + 'static,
+    R: Codec,
+    R::Deserialized: Send + 'static,
+{
     pub async fn new(mode: ConnectionMode, num_connections: usize) -> Self {
         match mode {
             ConnectionMode::Server(port) => Self::new_as_server(port, num_connections).await,
@@ -60,43 +88,64 @@ impl RemoteChannel {
             streams.into_iter().map(|s| s.into_split()).unzip();
 
         // socket, when idle, read message from the user and send it to the remote endpoint
-        let (user_side_sender, socket_side_receiver) = async_channel::unbounded::<Message>();
+        let (user_side_sender, socket_side_receiver) =
+            async_channel::unbounded::<(S, tokio::sync::oneshot::Sender<bool>)>();
+        let (user_side_control_sender, socket_side_control_receiver) =
+            tokio::sync::broadcast::channel(1);
         for socket in write_sockets.into_iter() {
             let socket_side = socket_side_receiver.clone();
+            let mut control_receiver = socket_side_control_receiver.resubscribe();
             tokio::spawn(async move {
                 let peer_addr = socket.peer_addr().unwrap();
                 let mut writer = BufWriter::new(socket);
-                let mut buffer = SmallVec::<[u8; 64]>::new();
+                let mut buffer =
+                    SmallVec::<[u8; 64]>::from_elem(0, S::SIZE_IN_BYTES.get_size_or_panic());
                 loop {
-                    // let message = socket_side.recv().await.unwrap();
-                    let message = if let Ok(msg) = socket_side.recv().await {
-                        msg
-                    } else {
-                        info!("All messages have been sent. Flushing and sending FIN.");
-                        if writer.flush().await.is_err() {
-                            warn!("Peer {} is closed before flushing", peer_addr);
+                    let message = tokio::select! {
+                        message = socket_side.recv() => message,
+                        _ = control_receiver.recv() => {
+                            info!("Flushing writer for peer {}", peer_addr);
+                            if writer.flush().await.is_err() {
+                                warn!("Peer {} is closed before flushing", peer_addr);
+                            }
+                            continue;
                         }
-                        break;
                     };
-                    message.to_bytes(&mut buffer).unwrap();
+                    let (message, handle) = match message {
+                        Ok(msg) => msg,
+                        Err(_) => {
+                            info!("All messages have been sent. Flushing and sending FIN.");
+                            if writer.flush().await.is_err() {
+                                warn!("Peer {} is closed before flushing", peer_addr);
+                            }
+                            break;
+                        }
+                    };
+                    message.to_bytes(&mut buffer[..]).unwrap();
                     if writer.write_all(&buffer).await.is_err() {
                         error!("Peer {} is closed before sending message", peer_addr);
+                        handle.send(false).unwrap();
                         break;
                     }
+                    handle.send(true).unwrap();
+                    trace!("Sent message");
                 }
             });
         }
 
         // socket, when receiving a message from the remote endpoint, send it to the user
-        let (socket_side_sender, user_side_receiver) = async_channel::unbounded::<Message>();
+        let (socket_side_sender, user_side_receiver) =
+            async_channel::unbounded::<R::Deserialized>();
         for socket in read_sockets.into_iter() {
             let socket_side = socket_side_sender.clone();
             tokio::spawn(async move {
                 let peer_addr = socket.peer_addr().unwrap();
                 let mut reader = BufReader::new(socket);
-                let mut buffer = SmallVec::<[u8; 64]>::new();
+                let mut buffer =
+                    SmallVec::<[u8; 64]>::from_elem(0, R::SIZE_IN_BYTES.get_size_or_panic());
                 loop {
-                    if let Err(e) = reader.read_exact(&mut buffer).await {
+                    trace!("Waiting for peer");
+                    if let Err(e) = reader.read_exact(&mut buffer[..]).await {
                         match e.kind() {
                             std::io::ErrorKind::UnexpectedEof => {
                                 info!("Peer {} is closed", peer_addr);
@@ -105,8 +154,10 @@ impl RemoteChannel {
                                 error!("Error reading from peer {}: {}", peer_addr, e);
                             }
                         }
+                        break;
                     }
-                    let message = Message::from_bytes(&mut buffer.as_ref()).unwrap();
+                    let message = R::from_bytes(&mut buffer.as_ref()).unwrap();
+                    trace!("Got a message");
                     socket_side.send(message).await.unwrap();
                 }
             });
@@ -114,15 +165,31 @@ impl RemoteChannel {
 
         Self {
             sender: user_side_sender,
+            sender_control: user_side_control_sender,
             receiver: user_side_receiver,
         }
     }
 
-    pub async fn send(&self, message: Message) -> Result<(), async_channel::SendError<Message>> {
-        self.sender.send(message).await
+    pub async fn send(&self, message: S) -> CompletionHandle {
+        let (sender, receiver) = tokio::sync::oneshot::channel();
+        self.sender
+            .send((message, sender))
+            .await
+            .expect("Failed to send message");
+        CompletionHandle { receiver }
     }
 
-    pub async fn recv(&self) -> Result<Message, async_channel::RecvError> {
+    pub async fn flush(&self) {
+        if let Ok(n) = self.sender_control.send(Control::FlushWrite) {
+            if n == 0 {
+                warn!("No receiver for the control message");
+            }
+        } else {
+            error!("Failed to send control message")
+        }
+    }
+
+    pub async fn recv(&self) -> Result<R::Deserialized, async_channel::RecvError> {
         self.receiver.recv().await
     }
 }

@@ -9,8 +9,11 @@ use proj_cache_sim::{
     simulator::{run_simulation, RequestResult},
 };
 use proj_models::{RequestEvent, RequestId, TimeUnit};
-use proj_net::RemoteChannel;
-use tracing::error;
+use proj_net::{
+    msg::{CdnRequestMessage, OriginResponseMessage},
+    RemoteChannel,
+};
+use tracing::{error, info};
 
 struct LocalState<C> {
     cache: C,
@@ -19,22 +22,21 @@ struct LocalState<C> {
 
 struct Clock {
     start_time: Instant,
-    irt_ns: u64,
 }
 
 impl Clock {
     fn tick(irt_ns: u64) -> Self {
         let start_time = Instant::now();
-        Self { start_time, irt_ns }
+        Self { start_time }
     }
 
     fn start_time(&self) -> Instant {
         self.start_time
     }
 
-    async fn wait_until_next_available(self) {
+    async fn wait_until_next_available(self, irt_ns: u64) {
         // tokio::sleep is not accurate enough for capturing microsecond-level time.
-        while (self.start_time.elapsed().as_nanos() as u64) < self.irt_ns {
+        while (self.start_time.elapsed().as_nanos() as u64) < irt_ns {
             tokio::task::yield_now().await;
         }
     }
@@ -55,7 +57,7 @@ impl Clock {
 pub async fn run_cdn_experiment<C, I>(
     mut cache: C,
     requests: I,
-    origin: &RemoteChannel,
+    origin: &RemoteChannel<CdnRequestMessage, OriginResponseMessage>,
     warmup: usize,
     miss_latency_in_warmup: TimeUnit,
     irt_ns: u64,
@@ -66,6 +68,7 @@ where
 {
     // warmup requests are not actually sent to the origin and is only used to warm up the cache.
     let mut requests = requests.into_iter();
+    info!("Running {} warmup requests", warmup);
     let last_event = tokio::task::block_in_place(|| {
         let warmup_requests =
             requests
@@ -78,6 +81,7 @@ where
                 });
         run_simulation(&mut cache, warmup_requests, miss_latency_in_warmup).last_event_timestamp
     });
+    info!("Warmup requests completed, starting the main simulation");
 
     // Requests that are currently in fetching state.
     let state = Arc::new(Mutex::new(LocalState {
@@ -88,7 +92,7 @@ where
     let requests = requests.into_iter().collect::<Vec<_>>();
     let requests_count = requests.len();
 
-    // we assume there is a little bit long silence after the last simulation event
+    // for simplicity, we assume the trace resumes after all warmup requests are fulfilled.
     let start_of_time =
         Instant::now() - Duration::from_nanos(last_event as u64) - Duration::from_nanos(irt_ns);
 
@@ -101,7 +105,9 @@ where
         let origin = origin.clone();
         tokio::spawn(async move {
             for request in requests {
-                let timestamp = start_of_time.elapsed().as_nanos() as TimeUnit;
+                let clock = Clock::tick(irt_ns);
+                // let timestamp = start_of_time.elapsed().as_nanos() as TimeUnit;
+                let timestamp = (clock.start_time() - start_of_time).as_nanos() as TimeUnit;
 
                 let (first_request, cache_hit) = {
                     let mut state = state.lock().unwrap();
@@ -122,12 +128,10 @@ where
                     if first_request {
                         // the request is not in the cache, and is not in transit, so we need to send it
 
-                        origin
-                            .send(request.into())
-                            .await
-                            .expect("trying to send a message but origin connection is closed");
+                        origin.send(request.into()).await;
                     }
                 }
+                clock.wait_until_next_available(irt_ns).await;
             }
         })
     };
@@ -138,13 +142,13 @@ where
         let completion_sender = completion_sender.clone();
         tokio::spawn(async move {
             loop {
-                let request = if let Ok(r) = origin.recv().await {
+                let response = if let Ok(r) = origin.recv().await {
                     r
                 } else {
                     break;
                 };
                 completion_sender
-                    .send(request.into())
+                    .send(response.key)
                     .expect("got a message but the completion receiver is already completed");
             }
         })
@@ -152,6 +156,7 @@ where
 
     // the completion handling task
     let mut request_results = Vec::with_capacity(requests_count);
+    let mut last_progress_timestamp = Instant::now();
     while let Some(request) = completion_receiver.recv().await {
         let timestamp = start_of_time.elapsed().as_nanos() as TimeUnit;
         let mut state = state.lock().unwrap();
@@ -169,6 +174,17 @@ where
         request_results.extend(results);
 
         state.cache.write(request, (), timestamp);
+
+        // report progress
+        if last_progress_timestamp.elapsed() > Duration::from_secs(3) {
+            info!(
+                "{}/{} requests fulfilled",
+                request_results.len(),
+                requests_count
+            );
+            last_progress_timestamp = Instant::now();
+        }
+
         if request_results.len() == requests_count {
             break;
         }

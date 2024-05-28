@@ -10,5 +10,8 @@ clap_derive = "4.5.4"
 proj-cache-sim = { version = "0.1.0", path = "../proj-cache-sim" }
 proj-models = { version = "0.1.0", path = "../proj-models" }
 proj-net = { version = "0.1.0", path = "../proj-net" }
+rand = "0.8.5"
+rand_xorshift = "0.3.0"
 tokio = {version = "1", features = ["full"]}
+tracing = "0.1.40"
 tracing-subscriber = "0.3.18"

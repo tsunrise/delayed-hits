@@ -1,6 +1,6 @@
 use std::{
     io::{Read, Write},
-    ops::Add,
+    ops::{Add, Mul},
 };
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
@@ -16,6 +16,20 @@ impl CodecSize {
             _ => CodecSize::Dynamic,
         }
     }
+
+    pub const fn mul_const(self, rhs: usize) -> CodecSize {
+        match self {
+            CodecSize::Static(a) => CodecSize::Static(a * rhs),
+            _ => CodecSize::Dynamic,
+        }
+    }
+
+    pub const fn get_size_or_panic(self) -> usize {
+        match self {
+            CodecSize::Static(a) => a,
+            _ => panic!("Dynamic size is not supported here"),
+        }
+    }
 }
 
 impl Add<CodecSize> for CodecSize {
@@ -23,6 +37,28 @@ impl Add<CodecSize> for CodecSize {
 
     fn add(self, rhs: CodecSize) -> Self::Output {
         self.add_const(rhs)
+    }
+}
+
+impl Add<usize> for CodecSize {
+    type Output = CodecSize;
+
+    fn add(self, rhs: usize) -> Self::Output {
+        match self {
+            CodecSize::Static(a) => CodecSize::Static(a + rhs),
+            _ => CodecSize::Dynamic,
+        }
+    }
+}
+
+impl Mul<usize> for CodecSize {
+    type Output = CodecSize;
+
+    fn mul(self, rhs: usize) -> Self::Output {
+        match self {
+            CodecSize::Static(a) => CodecSize::Static(a * rhs),
+            _ => CodecSize::Dynamic,
+        }
     }
 }
 
