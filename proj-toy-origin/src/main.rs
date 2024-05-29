@@ -15,6 +15,13 @@ struct Args {
     pub conn: ConnectionMode,
     #[clap(long, short = 'n', default_value = "8")]
     pub num_connections: usize,
+    #[clap(
+        long,
+        short = 'b',
+        default_value = "4",
+        help = "number of messages buffered in the channel"
+    )]
+    pub num_msg_buffered: usize,
 }
 
 async fn async_main() {
@@ -25,6 +32,7 @@ async fn async_main() {
     let chan = RemoteChannel::<OriginResponseMessage, CdnRequestMessage>::new(
         args.conn,
         args.num_connections,
+        args.num_msg_buffered,
     )
     .await;
     let mut handles = Vec::new();

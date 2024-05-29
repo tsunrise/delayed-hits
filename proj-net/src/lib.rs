@@ -49,16 +49,22 @@ where
     R: Codec,
     R::Deserialized: Send + 'static,
 {
-    pub async fn new(mode: ConnectionMode, num_connections: usize) -> Self {
+    pub async fn new(
+        mode: ConnectionMode,
+        num_connections: usize,
+        num_msg_buffered: usize,
+    ) -> Self {
         match mode {
-            ConnectionMode::Server(port) => Self::new_as_server(port, num_connections).await,
+            ConnectionMode::Server(port) => {
+                Self::new_as_server(port, num_connections, num_msg_buffered).await
+            }
             ConnectionMode::Client(ip, port) => {
-                Self::new_as_client(ip, port, num_connections).await
+                Self::new_as_client(ip, port, num_connections, num_msg_buffered).await
             }
         }
     }
 
-    pub async fn new_as_server(port: u16, num_connections: usize) -> Self {
+    pub async fn new_as_server(port: u16, num_connections: usize, num_msg_buffered: usize) -> Self {
         let listener = tokio::net::TcpListener::bind(("0.0.0.0", port))
             .await
             .unwrap();
@@ -70,20 +76,25 @@ where
             streams.push(stream);
         }
 
-        Self::from_tcp_streams(streams)
+        Self::from_tcp_streams(streams, num_msg_buffered)
     }
 
-    pub async fn new_as_client(ip: Ipv4Addr, port: u16, num_connections: usize) -> Self {
+    pub async fn new_as_client(
+        ip: Ipv4Addr,
+        port: u16,
+        num_connections: usize,
+        num_msg_buffered: usize,
+    ) -> Self {
         let mut streams = Vec::new();
         for _ in 0..num_connections {
             let stream = TcpStream::connect((ip, port)).await.unwrap();
             streams.push(stream);
         }
 
-        Self::from_tcp_streams(streams)
+        Self::from_tcp_streams(streams, num_msg_buffered)
     }
 
-    fn from_tcp_streams(streams: Vec<TcpStream>) -> Self {
+    fn from_tcp_streams(streams: Vec<TcpStream>, num_msg_buffered: usize) -> Self {
         streams.iter().for_each(|s| s.set_nodelay(true).unwrap());
         let (read_sockets, write_sockets): (Vec<_>, Vec<_>) =
             streams.into_iter().map(|s| s.into_split()).unzip();
@@ -100,9 +111,11 @@ where
             let mut control_receiver = socket_side_control_receiver.resubscribe();
             let task_handle = tokio::spawn(async move {
                 let peer_addr = socket.peer_addr().unwrap();
-                let mut writer =
-                    // BufWriter::with_capacity(S::SIZE_IN_BYTES.get_size_or_panic() * 64, socket);
-                    BufWriter::new(socket);
+                let mut writer = BufWriter::with_capacity(
+                    S::SIZE_IN_BYTES.get_size_or_panic() * num_msg_buffered,
+                    socket,
+                );
+                // BufWriter::new(socket);
                 let mut buffer =
                     SmallVec::<[u8; 64]>::from_elem(0, S::SIZE_IN_BYTES.get_size_or_panic());
                 loop {
@@ -146,9 +159,11 @@ where
             let socket_side = socket_side_sender.clone();
             let task_handle = tokio::spawn(async move {
                 let peer_addr = socket.peer_addr().unwrap();
-                let mut reader =
-                    // BufReader::with_capacity(R::SIZE_IN_BYTES.get_size_or_panic() * 64, socket);
-                    BufReader::new(socket);
+                let mut reader = BufReader::with_capacity(
+                    R::SIZE_IN_BYTES.get_size_or_panic() * num_msg_buffered,
+                    socket,
+                );
+                // BufReader::new(socket);
                 let mut buffer =
                     SmallVec::<[u8; 64]>::from_elem(0, R::SIZE_IN_BYTES.get_size_or_panic());
                 loop {

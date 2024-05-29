@@ -5,13 +5,12 @@ use std::time::Instant;
 
 use clap::Parser as _;
 use clap_derive::Parser;
-use proj_cache_sim::heuristics::TimingStatistics;
 use proj_net::{
     msg::{CdnRequestMessage, OriginResponseMessage},
     ConnectionMode, RemoteChannel,
 };
 use simulator::Clock;
-use tracing::{info, trace};
+use tracing::info;
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -48,6 +47,13 @@ struct Args {
         help = "number of measure rounds"
     )]
     num_measure_rounds: usize,
+    #[clap(
+        long,
+        short = 'b',
+        default_value = "4",
+        help = "number of messages buffered in the channel"
+    )]
+    num_msg_buffered: usize,
 }
 
 async fn measurement() {
@@ -60,37 +66,45 @@ async fn measurement() {
     let chan = RemoteChannel::<CdnRequestMessage, OriginResponseMessage>::new(
         args.conn,
         args.num_connections,
+        args.num_msg_buffered,
     )
     .await;
 
     info!("Measuring average latency...");
     let start_of_time = Instant::now();
+    // subscribe to responses
+    let ends_handle = {
+        let chan = chan.clone();
+        tokio::spawn(async move {
+            let mut ends = Vec::new();
+            while let Ok(response) = chan.recv().await {
+                ends.push((std::time::Instant::now(), response.key));
+            }
+            ends
+        })
+    };
+
     let mut starts = Vec::new();
     let mut handles = Vec::new();
     for idx in 0..args.num_measure_rounds {
-        // let clock = Clock::tick();
+        let clock = Clock::tick();
         starts.push(std::time::Instant::now());
         handles.push(chan.send(CdnRequestMessage::new(idx as u64)).await);
-        // clock.wait_until_next_available(1000).await; // TODO: try increase this
+        clock.wait_until_next_available(1000).await; // TODO: try increase this
     }
     {
         let chan = chan.clone();
         tokio::spawn(async move {
             for handle in handles {
                 assert!(handle.wait().await);
+                chan.flush().await;
             }
-            chan.flush().await;
             chan.close_send().await;
         });
     }
 
-    // let mut total_latency = tokio::time::Duration::from_secs(0);
-    let mut ends = Vec::new();
-    for _ in 0..args.num_measure_rounds {
-        let response = chan.recv().await.unwrap();
-        ends.push((std::time::Instant::now(), response.key));
-    }
-    ends.sort_by_key(|(end, _)| *end);
+    let mut ends = ends_handle.await.unwrap();
+    ends.sort_by_key(|(_, key)| *key);
 
     let starts_ns = starts
         .iter()
@@ -119,7 +133,11 @@ async fn measurement() {
     info!("Ends: {:?}", ends_ns.iter().take(10).collect::<Vec<_>>());
     info!("Average inter-request time: {} ns", average_i_request_t);
     info!("Average inter-response time: {} ns", average_i_response_t);
-    info!("Average delay: {} ns", average_delay);
+    info!(
+        "Average delay: {} ns = {} ms",
+        average_delay,
+        average_delay / 1_000_000.0
+    );
 
     npy::to_file("request_timestamps.npy", starts_ns).unwrap();
     npy::to_file("response_timestamps.npy", ends_ns).unwrap();
