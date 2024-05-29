@@ -7,7 +7,7 @@ use proj_net::{
 use rand::{Rng as _, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use tokio::runtime::Runtime;
-use tracing::info;
+use tracing::{info, trace};
 
 #[derive(Parser, Debug)]
 struct Args {
@@ -39,6 +39,7 @@ async fn async_main() {
     while let Ok(msg) = chan.recv().await {
         let chan = chan.clone();
         let handle = tokio::spawn(async move {
+            // trace!("received {}", msg.key);
             let mut rng = XorShiftRng::from_rng(rand::thread_rng()).unwrap();
             let mut payload = FixedSizeResponsePayload::default();
             rng.fill(&mut payload.content[..]);

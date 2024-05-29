@@ -13,7 +13,7 @@ use proj_net::{
     msg::{CdnRequestMessage, OriginResponseMessage},
     RemoteChannel,
 };
-use tracing::{error, info};
+use tracing::{error, info, trace};
 
 struct LocalState<C> {
     cache: C,
@@ -108,11 +108,18 @@ where
             let mut last_progress_timestamp = Instant::now();
             while let Some(request) = completion_receiver.recv().await {
                 let timestamp = start_of_time.elapsed().as_nanos() as TimeUnit;
-                let mut state = state.lock().unwrap();
-                let pending_requests = state
-                    .requests_in_progress
-                    .remove(&request)
-                    .expect("received an unexpected request response");
+                let mut state = state
+                    .lock()
+                    .expect("state lock is poisoned for completion handling");
+                // trace!("R: {}", request);
+                let pending_requests = if let Some(r) = state.requests_in_progress.remove(&request)
+                {
+                    r
+                } else {
+                    // it's ok. probably just pending requests from warmup
+                    // trace!("Request {} is already fulfilled", request);
+                    Vec::new()
+                };
                 let results = pending_requests
                     .into_iter()
                     .map(|req_timestamp| RequestResult {
@@ -150,13 +157,16 @@ where
 
         tokio::spawn(async move {
             let mut origin_request_timestamps = Vec::new();
+            let mut send_handles = Vec::new();
             for request in requests {
                 let clock = Clock::tick();
                 // let timestamp = start_of_time.elapsed().as_nanos() as TimeUnit;
                 let timestamp = (clock.start_time() - start_of_time).as_nanos() as TimeUnit;
 
                 let (first_request, cache_hit) = {
-                    let mut state = state.lock().unwrap();
+                    let mut state = state
+                        .lock()
+                        .expect("state lock is poisoned for request sending");
                     // add the request to the in-progress list
                     let requests_in_progress =
                         state.requests_in_progress.entry(request).or_default();
@@ -165,6 +175,7 @@ where
                     let cache_hit = state.cache.get(&request, timestamp).is_some();
                     (first_request, cache_hit)
                 };
+                // trace!("S: {} {}", request, if cache_hit { "" } else { "(miss)" });
                 if cache_hit {
                     // the request is immediately fulfilled.
                     completion_sender
@@ -174,11 +185,17 @@ where
                     if first_request {
                         // the request is not in the cache, and is not in transit, so we need to send it
                         origin_request_timestamps.push(timestamp);
-                        origin.send(request.into()).await;
+                        let handle = origin.send(request.into()).await;
+                        send_handles.push(handle);
                     }
                 }
                 clock.wait_until_next_available(irt_ns).await;
             }
+            for handle in send_handles {
+                assert!(handle.wait().await, "send request failed");
+            }
+            origin.flush().await;
+            origin.close_send().await;
             origin_request_timestamps
         })
     };

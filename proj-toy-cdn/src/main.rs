@@ -79,7 +79,8 @@ enum Commands {
             long,
             short = 'i',
             help = "inter-request time, with unit (e.g. 300ns, 2ms)",
-            value_parser = proj_cache_sim::parse_time_unit
+            value_parser = proj_cache_sim::parse_time_unit,
+            default_value = "1us"
         )]
         irt: TimeUnit,
     },

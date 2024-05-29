@@ -190,8 +190,7 @@ pub fn compute_statistics(result: &[RequestResult]) -> Statistics {
 
     let total_latency: u128 = result
         .iter()
-        .map(|r| r.completion_timestamp - r.request_timestamp)
-        .map(|latency| latency as u128)
+        .map(|r| r.completion_timestamp.saturating_sub(r.request_timestamp) as u128)
         .sum();
 
     let average_latency = total_latency as f64 / result.len() as f64;

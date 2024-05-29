@@ -159,8 +159,9 @@ where
                         handle.send(false).unwrap();
                         break;
                     }
-                    handle.send(true).unwrap();
-                    // trace!("Sent message");
+                    handle.send(true).unwrap_or_else(|_| {
+                        warn!("A message send handle is ignored");
+                    });
                 }
             });
             task_handles.push(task_handle);
