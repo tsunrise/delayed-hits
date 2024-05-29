@@ -111,7 +111,7 @@ fn run_experiment(
     let mut lru = construct_k_way_cache(cache_counts, |_| LRU::new(cache_capacity));
     let request_results_lru = if let Some(max_requests) = max_requests {
         // // uncomment this block to simulate the toy cdn deployment (after dummy warmup, the CDN nodes waits for all requests to be fulfilled before playing the trace)
-        let mut requests = load_events_file(requests_path).take(max_requests);
+        // let mut requests = load_events_file(requests_path).take(max_requests);
         // let requests_a = requests
         //     .by_ref()
         //     .take(warmup)

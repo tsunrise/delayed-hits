@@ -7,7 +7,7 @@ use proj_net::{
 use rand::{Rng as _, SeedableRng};
 use rand_xorshift::XorShiftRng;
 use tokio::runtime::Runtime;
-use tracing::{info, trace};
+use tracing::info;
 
 #[derive(Parser, Debug)]
 struct Args {
