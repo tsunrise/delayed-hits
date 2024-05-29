@@ -99,6 +99,7 @@ async fn measurement() {
                 assert!(handle.wait().await);
                 chan.flush().await;
             }
+            // chan.flush().await;
             chan.close_send().await;
         });
     }

@@ -7,8 +7,9 @@ use thiserror::Error;
 use tokio::{
     io::{AsyncReadExt as _, AsyncWriteExt as _, BufReader, BufWriter},
     net::TcpStream,
+    task::JoinHandle,
 };
-use tracing::{error, info, trace, warn};
+use tracing::{error, info, warn};
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Control {
@@ -29,7 +30,7 @@ impl CompletionHandle {
 /// A channel that can send and receive messages from a remote endpoint.
 /// - `S`: the type of the message sent from the local endpoint to the remote endpoint
 /// - `R`: the type of the message sent from the remote endpoint to the local endpoint
-#[derive(Debug, Clone)]
+#[derive(Debug)]
 pub struct RemoteChannel<S, R>
 where
     S: Codec,
@@ -41,6 +42,19 @@ where
     sender_control: tokio::sync::broadcast::Sender<Control>,
     /// One of the sockets -> local
     receiver: async_channel::Receiver<R::Deserialized>,
+    /// The task handles for the sender and receiver tasks (are not cloned)
+    task_handles: Option<Box<Vec<JoinHandle<()>>>>,
+}
+
+impl<S: Codec, R: Codec> Clone for RemoteChannel<S, R> {
+    fn clone(&self) -> Self {
+        Self {
+            sender: self.sender.clone(),
+            sender_control: self.sender_control.clone(),
+            receiver: self.receiver.clone(),
+            task_handles: None,
+        }
+    }
 }
 
 impl<S, R> RemoteChannel<S, R>
@@ -122,7 +136,7 @@ where
                     let message = tokio::select! {
                         message = socket_side.recv() => message,
                         _ = control_receiver.recv() => {
-                            trace!("Flushing writer for peer {}", peer_addr);
+                            // trace!("Flushing writer for peer {}", peer_addr);
                             if writer.flush().await.is_err() {
                                 warn!("Peer {} is closed before flushing", peer_addr);
                             }
@@ -146,7 +160,7 @@ where
                         break;
                     }
                     handle.send(true).unwrap();
-                    trace!("Sent message");
+                    // trace!("Sent message");
                 }
             });
             task_handles.push(task_handle);
@@ -167,7 +181,7 @@ where
                 let mut buffer =
                     SmallVec::<[u8; 64]>::from_elem(0, R::SIZE_IN_BYTES.get_size_or_panic());
                 loop {
-                    trace!("Waiting for peer");
+                    // trace!("Waiting for peer");
                     if let Err(e) = reader.read_exact(&mut buffer[..]).await {
                         match e.kind() {
                             std::io::ErrorKind::UnexpectedEof => {
@@ -180,7 +194,7 @@ where
                         break;
                     }
                     let message = R::from_bytes(&mut buffer.as_ref()).unwrap();
-                    trace!("Got a message");
+                    // trace!("Got a message");
                     socket_side.send(message).await.unwrap();
                 }
             });
@@ -191,6 +205,7 @@ where
             sender: user_side_sender,
             sender_control: user_side_control_sender,
             receiver: user_side_receiver,
+            task_handles: Some(Box::new(task_handles)),
         }
     }
 
@@ -223,6 +238,22 @@ where
 
     pub async fn recv(&self) -> Result<R::Deserialized, async_channel::RecvError> {
         self.receiver.recv().await
+    }
+
+    pub fn take_task_handles(&mut self) -> Option<Vec<tokio::task::JoinHandle<()>>> {
+        self.task_handles.take().map(|b| *b)
+    }
+
+    pub async fn grace_shutdown(mut self) {
+        self.close_send().await;
+        self.close_recv().await;
+        if let Some(task_handles) = self.take_task_handles() {
+            for handle in task_handles {
+                handle.await.unwrap();
+            }
+        } else {
+            error!("Attempt to grace shutdown a remote channel without task handles")
+        }
     }
 }
 

@@ -53,8 +53,7 @@ async fn async_main() {
     }
     chan.flush().await;
 
-    drop(chan);
-    tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+    chan.grace_shutdown().await;
 }
 
 fn main() {
