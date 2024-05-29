@@ -1,27 +1,12 @@
-mod data;
 use std::fmt::Display;
 
 use clap::{Parser, Subcommand};
 use proj_cache_sim::{
     cache::{construct_k_way_cache, lru::LRU, lru_mad::LRUMinAD},
-    heuristics,
+    get_time_string, heuristics,
+    io::load_events_file,
     simulator::{compute_statistics, run_simulation},
 };
-
-fn get_time_string(nanos: u128) -> String {
-    let micros = nanos / 1000;
-    let millis = micros / 1000;
-    let seconds = millis / 1000;
-    if seconds > 0 {
-        format!("{} s", seconds)
-    } else if millis > 0 {
-        format!("{} ms", millis)
-    } else if micros > 0 {
-        format!("{} us", micros)
-    } else {
-        format!("{} ns", nanos)
-    }
-}
 
 fn print_irt_stats(irt_stat: &heuristics::TimingStatistics) {
     println!(
@@ -46,7 +31,7 @@ fn print_irt_stats(irt_stat: &heuristics::TimingStatistics) {
 }
 
 fn analyze_event(event_path: &str) {
-    let requests = data::load_data(event_path).collect::<Vec<_>>();
+    let requests = load_events_file(event_path).collect::<Vec<_>>();
     let maximum_active_objects = heuristics::maximum_active_objects(&requests);
     let irt_stat = heuristics::get_irt(&requests);
 
@@ -126,7 +111,7 @@ fn run_experiment(
     let mut lru = construct_k_way_cache(cache_counts, |_| LRU::new(cache_capacity));
     let request_results_lru = if let Some(max_requests) = max_requests {
         // // uncomment this block to simulate the toy cdn deployment (after dummy warmup, the CDN nodes waits for all requests to be fulfilled before playing the trace)
-        // let mut requests = data::load_data(requests_path).take(max_requests);
+        let mut requests = load_events_file(requests_path).take(max_requests);
         // let requests_a = requests
         //     .by_ref()
         //     .take(warmup)
@@ -139,11 +124,11 @@ fn run_experiment(
         // run_simulation(&mut lru, requests_a.chain(requests_b), miss_latency)
         run_simulation(
             &mut lru,
-            data::load_data(requests_path).take(max_requests),
+            load_events_file(requests_path).take(max_requests),
             miss_latency,
         )
     } else {
-        run_simulation(&mut lru, data::load_data(requests_path), miss_latency)
+        run_simulation(&mut lru, load_events_file(requests_path), miss_latency)
     };
 
     let stats = compute_statistics(&request_results_lru.results[warmup..]);
@@ -167,11 +152,11 @@ fn run_experiment(
         // run_simulation(&mut lru_mad, requests_a.chain(requests_b), miss_latency)
         run_simulation(
             &mut lru_mad,
-            data::load_data(requests_path).take(max_requests),
+            load_events_file(requests_path).take(max_requests),
             miss_latency,
         )
     } else {
-        run_simulation(&mut lru_mad, data::load_data(requests_path), miss_latency)
+        run_simulation(&mut lru_mad, load_events_file(requests_path), miss_latency)
     };
 
     let stats = compute_statistics(&request_results_lru_mad.results[warmup..]);
@@ -194,18 +179,8 @@ fn run_experiment(
     }
 }
 
-fn parse_miss_latency(s: &str) -> Result<u64, std::num::ParseIntError> {
-    match s {
-        s if s.ends_with("ns") => s[..s.len() - 2].parse(),
-        s if s.ends_with("us") => Ok(s[..s.len() - 2].parse::<u64>()? * 1000),
-        s if s.ends_with("ms") => Ok(s[..s.len() - 2].parse::<u64>()? * 1_000_000),
-        s if s.ends_with("s") => Ok(s[..s.len() - 1].parse::<u64>()? * 1_000_000_000),
-        _ => s.parse(),
-    }
-}
-
 fn head(path: &str, n: usize) {
-    let requests = data::load_data(path).take(n);
+    let requests = load_events_file(path).take(n);
     for request in requests {
         println!("{}:{}", request.timestamp, request.key)
     }
@@ -220,7 +195,7 @@ enum Experiment {
         cache_counts: usize,
         #[clap(long, short = 'c')]
         cache_capacity: usize,
-        #[clap(long, short = 'l', help = "miss latency with unit (e.g. 300ns, 2ms)", value_parser = parse_miss_latency)]
+        #[clap(long, short = 'l', help = "miss latency with unit (e.g. 300ns, 2ms)", value_parser = proj_cache_sim::parse_time_unit)]
         miss_latency: u64,
         #[clap(
             long,

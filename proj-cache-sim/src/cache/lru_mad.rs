@@ -75,6 +75,7 @@ impl<K: ObjectId, V> LRUMinAD<K, V> {
 }
 
 impl<K: ObjectId, V> Cache<K, V> for LRUMinAD<K, V> {
+    const NAME: &'static str = "lru-mad";
     fn write(&mut self, key: K, value: V, timestamp: TimeUnit) {
         if self.value_store.contains_key(&key) {
             self.value_store.insert(key, value);

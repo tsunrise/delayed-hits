@@ -61,7 +61,7 @@ pub async fn run_cdn_experiment<C, I>(
     warmup: usize,
     miss_latency_in_warmup: TimeUnit,
     irt_ns: u64,
-) -> Vec<RequestResult>
+) -> (Vec<RequestResult>, Vec<TimeUnit>, Vec<TimeUnit>)
 where
     C: Cache<RequestId, ()> + Send + 'static,
     I: IntoIterator<Item = RequestId>,
@@ -99,11 +99,57 @@ where
     let (completion_sender, mut completion_receiver) =
         tokio::sync::mpsc::unbounded_channel::<RequestId>();
 
+    // the completion handling task
+    let completion_handle = {
+        let state = state.clone();
+
+        tokio::spawn(async move {
+            let mut request_results = Vec::with_capacity(requests_count);
+            let mut last_progress_timestamp = Instant::now();
+            while let Some(request) = completion_receiver.recv().await {
+                let timestamp = start_of_time.elapsed().as_nanos() as TimeUnit;
+                let mut state = state.lock().unwrap();
+                let pending_requests = state
+                    .requests_in_progress
+                    .remove(&request)
+                    .expect("received an unexpected request response");
+                let results = pending_requests
+                    .into_iter()
+                    .map(|req_timestamp| RequestResult {
+                        key: request,
+                        request_timestamp: req_timestamp,
+                        completion_timestamp: timestamp,
+                    });
+                request_results.extend(results);
+
+                state.cache.write(request, (), timestamp);
+
+                // report progress
+                if last_progress_timestamp.elapsed() > Duration::from_secs(3) {
+                    info!(
+                        "{}/{} requests fulfilled",
+                        request_results.len(),
+                        requests_count
+                    );
+                    last_progress_timestamp = Instant::now();
+                }
+
+                if request_results.len() == requests_count {
+                    break;
+                }
+            }
+            request_results
+        })
+    };
+
+    // the request sending task
     let request_sending_handle = {
         let state = state.clone();
         let completion_sender = completion_sender.clone();
         let origin = origin.clone();
+
         tokio::spawn(async move {
+            let mut origin_request_timestamps = Vec::new();
             for request in requests {
                 let clock = Clock::tick();
                 // let timestamp = start_of_time.elapsed().as_nanos() as TimeUnit;
@@ -127,12 +173,13 @@ where
                 } else {
                     if first_request {
                         // the request is not in the cache, and is not in transit, so we need to send it
-
+                        origin_request_timestamps.push(timestamp);
                         origin.send(request.into()).await;
                     }
                 }
                 clock.wait_until_next_available(irt_ns).await;
             }
+            origin_request_timestamps
         })
     };
 
@@ -141,60 +188,35 @@ where
         let origin = origin.clone();
         let completion_sender = completion_sender.clone();
         tokio::spawn(async move {
+            let mut origin_response_timestamps = Vec::new();
             loop {
                 let response = if let Ok(r) = origin.recv().await {
                     r
                 } else {
                     break;
                 };
+                let timestamp = (Instant::now() - start_of_time).as_nanos() as TimeUnit;
+                origin_response_timestamps.push(timestamp);
                 completion_sender
                     .send(response.key)
                     .expect("got a message but the completion receiver is already completed");
             }
+            origin_response_timestamps
         })
     };
 
-    // the completion handling task
-    let mut request_results = Vec::with_capacity(requests_count);
-    let mut last_progress_timestamp = Instant::now();
-    while let Some(request) = completion_receiver.recv().await {
-        let timestamp = start_of_time.elapsed().as_nanos() as TimeUnit;
-        let mut state = state.lock().unwrap();
-        let pending_requests = state
-            .requests_in_progress
-            .remove(&request)
-            .expect("received an unexpected request response");
-        let results = pending_requests
-            .into_iter()
-            .map(|req_timestamp| RequestResult {
-                key: request,
-                request_timestamp: req_timestamp,
-                completion_timestamp: timestamp,
-            });
-        request_results.extend(results);
-
-        state.cache.write(request, (), timestamp);
-
-        // report progress
-        if last_progress_timestamp.elapsed() > Duration::from_secs(3) {
-            info!(
-                "{}/{} requests fulfilled",
-                request_results.len(),
-                requests_count
-            );
-            last_progress_timestamp = Instant::now();
-        }
-
-        if request_results.len() == requests_count {
-            break;
-        }
-    }
-    let _ = (completion_sender, completion_receiver); // drop the completion receiver
-    if let Err(e) = request_sending_handle.await {
-        error!("request sending task failed: {:?}", e);
-    }
-    if let Err(e) = proxy_handle.await {
-        error!("proxy task failed: {:?}", e);
-    }
-    request_results
+    let _ = completion_sender; // drop the completion receiver
+    let origin_request_timestamps = request_sending_handle
+        .await
+        .expect("request sending task failed");
+    let origin_response_timestamps = proxy_handle.await.expect("proxy task failed");
+    let request_results = completion_handle
+        .await
+        .expect("completion handling task failed");
+    info!("All requests fulfilled. Experiment completed.");
+    (
+        request_results,
+        origin_request_timestamps,
+        origin_response_timestamps,
+    )
 }

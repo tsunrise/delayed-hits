@@ -21,6 +21,7 @@ impl<T: Hash + Eq + PartialEq + Clone + Debug> ObjectId for T {}
 
 /// A cache store with no values stored.
 pub trait Cache<K: ObjectId, V> {
+    const NAME: &'static str;
     /// Write a key in the cache. Evict will happen if the cache is full.
     /// `write` should be called only when
     /// - A key is accessed and there is a miss and the miss has been fetched from the backing store.
@@ -57,6 +58,8 @@ fn get_cache_idx<K: ObjectId>(k: usize, key: &K) -> usize {
 }
 
 impl<K: ObjectId, V, C: Cache<K, V>> Cache<K, V> for MultiCache<K, V, C> {
+    const NAME: &'static str = C::NAME;
+
     fn write(&mut self, key: K, value: V, timestamp: TimeUnit) {
         let idx = get_cache_idx(self.caches.len(), &key);
         self.caches[idx].write(key, value, timestamp);

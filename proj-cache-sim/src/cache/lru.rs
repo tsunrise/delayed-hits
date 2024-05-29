@@ -19,6 +19,7 @@ impl<K: ObjectId, V> LRU<K, V> {
 }
 
 impl<K: ObjectId, V> Cache<K, V> for LRU<K, V> {
+    const NAME: &'static str = "lru";
     fn write(&mut self, key: K, value: V, _timestamp: TimeUnit) {
         if self.store.contains_key(&key) {
             self.store.insert(key, value);

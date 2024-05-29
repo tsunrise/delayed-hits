@@ -1,16 +1,41 @@
 #[allow(unused)]
-mod simulator;
+mod experiment;
 
-use std::time::Instant;
+use std::{str::FromStr, time::Instant};
 
 use clap::{Parser as _, Subcommand};
 use clap_derive::Parser;
+use experiment::{run_cdn_experiment, Clock};
+use proj_cache_sim::{
+    cache::{construct_k_way_cache, lru::LRU, lru_mad::LRUMinAD, Cache},
+    get_time_string,
+    io::load_events_file,
+    simulator::compute_statistics,
+};
+use proj_models::{RequestId, TimeUnit};
 use proj_net::{
     msg::{CdnRequestMessage, OriginResponseMessage},
     ConnectionMode, RemoteChannel,
 };
-use simulator::Clock;
 use tracing::info;
+
+#[derive(Clone, Copy, PartialEq, Eq, Debug)]
+enum CacheType {
+    LRU,
+    LRUMinAD,
+}
+
+impl FromStr for CacheType {
+    type Err = String;
+
+    fn from_str(s: &str) -> Result<Self, Self::Err> {
+        match s {
+            "lru" => Ok(Self::LRU),
+            "lru-mad" => Ok(Self::LRUMinAD),
+            _ => Err(format!("Unknown cache type: {}", s)),
+        }
+    }
+}
 
 #[derive(Subcommand, Debug)]
 enum Commands {
@@ -46,6 +71,17 @@ enum Commands {
             help = "number of actual requests to process after the warmup"
         )]
         num_requests: usize,
+        #[clap(long, short = 't', default_value = "lru", help = "cache type")]
+        cache_type: CacheType,
+        #[clap(long, short = 'l', help = "estimated miss latency for warmup, with unit (e.g. 300ns, 2ms)", value_parser = proj_cache_sim::parse_time_unit)]
+        miss_latency: u64,
+        #[clap(
+            long,
+            short = 'i',
+            help = "inter-request time, with unit (e.g. 300ns, 2ms)",
+            value_parser = proj_cache_sim::parse_time_unit
+        )]
+        irt: TimeUnit,
     },
 }
 
@@ -91,7 +127,7 @@ async fn measurement(
         let clock = Clock::tick();
         starts.push(std::time::Instant::now());
         handles.push(chan.send(CdnRequestMessage::new(idx as u64)).await);
-        clock.wait_until_next_available(1000).await; // TODO: try increase this
+        clock.wait_until_next_available(1000).await;
     }
     {
         let chan = chan.clone();
@@ -140,6 +176,94 @@ async fn measurement(
     npy::to_file("response_timestamps.npy", ends_ns).unwrap();
 }
 
+async fn experiment_on_cache<C>(
+    cache: C,
+    chan: RemoteChannel<CdnRequestMessage, OriginResponseMessage>,
+    event_path: String,
+    warmup: usize,
+    num_requests: usize,
+    estimated_miss_latency: u64,
+    irt_ns: u64,
+) where
+    C: Cache<RequestId, ()> + Send + 'static,
+{
+    let events = load_events_file(&event_path)
+        .take(warmup + num_requests)
+        .map(|r| r.key);
+    let (results, origin_send_timestamps, origin_response_timestamps) =
+        run_cdn_experiment(cache, events, &chan, warmup, estimated_miss_latency, irt_ns).await;
+
+    let stats = compute_statistics(&results);
+    info!(
+        "Average latency: {}",
+        get_time_string(stats.average_latency as u128)
+    );
+    info!("Saving Results...");
+    let request_starts = results
+        .iter()
+        .map(|r| r.request_timestamp)
+        .collect::<Vec<_>>();
+    let request_ends = results
+        .iter()
+        .map(|r| r.completion_timestamp)
+        .collect::<Vec<_>>();
+    npy::to_file(format!("request_starts_{}.npy", C::NAME), request_starts).unwrap();
+    npy::to_file(format!("request_ends_{}.npy", C::NAME), request_ends).unwrap();
+    npy::to_file(
+        format!("origin_send_timestamps_{}.npy", C::NAME),
+        origin_send_timestamps,
+    )
+    .unwrap();
+    npy::to_file(
+        format!("origin_response_timestamps_{}.npy", C::NAME),
+        origin_response_timestamps,
+    )
+    .unwrap();
+}
+
+async fn experiment(
+    chan: RemoteChannel<CdnRequestMessage, OriginResponseMessage>,
+    cache_type: CacheType,
+    event_path: String,
+    cache_count: usize,
+    cache_capacity: usize,
+    warmup: usize,
+    num_requests: usize,
+    estimated_miss_latency_ns: TimeUnit,
+    irt_ns: TimeUnit,
+) {
+    match cache_type {
+        CacheType::LRU => {
+            let cache = construct_k_way_cache(cache_count, |_| LRU::new(cache_capacity));
+            experiment_on_cache(
+                cache,
+                chan,
+                event_path,
+                warmup,
+                num_requests,
+                estimated_miss_latency_ns,
+                irt_ns,
+            )
+            .await
+        }
+        CacheType::LRUMinAD => {
+            let cache = construct_k_way_cache(cache_count, |_| {
+                LRUMinAD::new(cache_capacity, estimated_miss_latency_ns)
+            });
+            experiment_on_cache(
+                cache,
+                chan,
+                event_path,
+                warmup,
+                num_requests,
+                estimated_miss_latency_ns,
+                irt_ns,
+            )
+            .await
+        }
+    };
+}
+
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     runtime.block_on(async {
@@ -163,17 +287,24 @@ fn main() {
                 event_path,
                 cache_count,
                 cache_capacity,
+                cache_type,
                 warmup,
                 num_requests,
+                miss_latency,
+                irt,
             } => {
-                let _ = (
+                experiment(
+                    chan,
+                    cache_type,
                     event_path,
                     cache_count,
                     cache_capacity,
                     warmup,
                     num_requests,
-                );
-                todo!()
+                    miss_latency,
+                    irt,
+                )
+                .await
             }
         }
     })
