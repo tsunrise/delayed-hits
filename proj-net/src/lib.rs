@@ -43,7 +43,7 @@ where
     /// One of the sockets -> local
     receiver: async_channel::Receiver<R::Deserialized>,
     /// The task handles for the sender and receiver tasks (are not cloned)
-    task_handles: Option<Box<Vec<JoinHandle<()>>>>,
+    task_handles: Option<Box<Vec<JoinHandle<()>>>>, // TODO: analyze this: changing to Option<Vec<JoinHandle<()>>> causes a ridiculous latency increase
 }
 
 impl<S: Codec, R: Codec> Clone for RemoteChannel<S, R> {

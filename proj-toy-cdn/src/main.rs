@@ -3,7 +3,7 @@ mod simulator;
 
 use std::time::Instant;
 
-use clap::Parser as _;
+use clap::{Parser as _, Subcommand};
 use clap_derive::Parser;
 use proj_net::{
     msg::{CdnRequestMessage, OriginResponseMessage},
@@ -12,41 +12,52 @@ use proj_net::{
 use simulator::Clock;
 use tracing::info;
 
+#[derive(Subcommand, Debug)]
+enum Commands {
+    Bench {
+        #[clap(
+            long,
+            short = 'r',
+            default_value = "100",
+            help = "number of measure rounds"
+        )]
+        num_measure_rounds: usize,
+    },
+    Experiment {
+        #[clap(required = true, help = "Path to the processed events file")]
+        event_path: String,
+        #[clap(
+            long,
+            short = 'k',
+            help = "number of caches (k for k-way set-associative cache)"
+        )]
+        cache_count: usize,
+        #[clap(long, short = 'c', help = "cache capacity in each cache")]
+        cache_capacity: usize,
+        #[clap(
+            long,
+            short = 'w',
+            help = "number of warmup requests to warm the cache before sending actual requests. Those requests are not sent to the internet and are not counted."
+        )]
+        warmup: usize,
+        #[clap(
+            long,
+            short = 'm',
+            help = "number of actual requests to process after the warmup"
+        )]
+        num_requests: usize,
+    },
+}
+
 #[derive(Parser, Debug)]
 struct Args {
-    // #[clap(required = true, help = "Path to the processed events file")]
-    // event_path: String,
-    // #[clap(
-    //     long,
-    //     short = 'k',
-    //     help = "number of caches (k for k-way set-associative cache)"
-    // )]
-    // cache_count: usize,
-    // #[clap(long, short = 'c', help = "cache capacity in each cache")]
-    // cache_capacity: usize,
-    // #[clap(
-    //     long,
-    //     short = 'w',
-    //     help = "number of warmup requests to warm the cache before sending actual requests. Those requests are not sent to the internet and are not counted."
-    // )]
-    // warmup: usize,
-    // #[clap(
-    //     long,
-    //     short = 'm',
-    //     help = "number of actual requests to process after the warmup"
-    // )]
-    // num_requests: usize,
+    #[command(subcommand)]
+    command: Commands,
     #[clap(long, short = 'c', value_parser = proj_net::parse_connection_mode, help = "use <ip_addr>:<port> for client, <port> for server")]
     conn: ConnectionMode,
     #[clap(long, short = 'n', default_value = "8", help = "number of connections")]
     num_connections: usize,
-    #[clap(
-        long,
-        short = 'r',
-        default_value = "100",
-        help = "number of measure rounds"
-    )]
-    num_measure_rounds: usize,
+
     #[clap(
         long,
         short = 'b',
@@ -56,20 +67,10 @@ struct Args {
     num_msg_buffered: usize,
 }
 
-async fn measurement() {
-    let args = Args::parse();
-    tracing_subscriber::fmt()
-        .with_max_level(tracing::Level::INFO)
-        .init();
-    info!("{:?}", args);
-
-    let chan = RemoteChannel::<CdnRequestMessage, OriginResponseMessage>::new(
-        args.conn,
-        args.num_connections,
-        args.num_msg_buffered,
-    )
-    .await;
-
+async fn measurement(
+    chan: RemoteChannel<CdnRequestMessage, OriginResponseMessage>,
+    num_measure_rounds: usize,
+) {
     info!("Measuring average latency...");
     let start_of_time = Instant::now();
     // subscribe to responses
@@ -86,7 +87,7 @@ async fn measurement() {
 
     let mut starts = Vec::new();
     let mut handles = Vec::new();
-    for idx in 0..args.num_measure_rounds {
+    for idx in 0..num_measure_rounds {
         let clock = Clock::tick();
         starts.push(std::time::Instant::now());
         handles.push(chan.send(CdnRequestMessage::new(idx as u64)).await);
@@ -117,21 +118,16 @@ async fn measurement() {
         .collect::<Vec<_>>();
 
     let average_i_request_t = starts_ns.windows(2).map(|w| w[1] - w[0]).sum::<u64>() as f64
-        / (args.num_measure_rounds as u64 - 1) as f64;
+        / (num_measure_rounds as u64 - 1) as f64;
     let average_i_response_t = ends_ns.windows(2).map(|w| w[1] - w[0]).sum::<u64>() as f64
-        / (args.num_measure_rounds as u64 - 1) as f64;
+        / (num_measure_rounds as u64 - 1) as f64;
     let average_delay = ends_ns
         .iter()
         .zip(starts_ns.iter())
         .map(|(e, s)| e - s)
         .sum::<u64>() as f64
-        / args.num_measure_rounds as f64;
+        / num_measure_rounds as f64;
 
-    info!(
-        "Starts: {:?}",
-        starts_ns.iter().take(10).collect::<Vec<_>>()
-    );
-    info!("Ends: {:?}", ends_ns.iter().take(10).collect::<Vec<_>>());
     info!("Average inter-request time: {} ns", average_i_request_t);
     info!("Average inter-response time: {} ns", average_i_response_t);
     info!(
@@ -147,6 +143,38 @@ async fn measurement() {
 fn main() {
     let runtime = tokio::runtime::Runtime::new().unwrap();
     runtime.block_on(async {
-        measurement().await;
+        let args = Args::parse();
+        tracing_subscriber::fmt()
+            .with_max_level(tracing::Level::INFO)
+            .init();
+        info!("{:?}", args);
+
+        let chan = RemoteChannel::<CdnRequestMessage, OriginResponseMessage>::new(
+            args.conn,
+            args.num_connections,
+            args.num_msg_buffered,
+        )
+        .await;
+        match args.command {
+            Commands::Bench { num_measure_rounds } => {
+                measurement(chan, num_measure_rounds).await;
+            }
+            Commands::Experiment {
+                event_path,
+                cache_count,
+                cache_capacity,
+                warmup,
+                num_requests,
+            } => {
+                let _ = (
+                    event_path,
+                    cache_count,
+                    cache_capacity,
+                    warmup,
+                    num_requests,
+                );
+                todo!()
+            }
+        }
     })
 }
