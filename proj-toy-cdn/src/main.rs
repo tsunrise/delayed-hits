@@ -196,8 +196,9 @@ async fn experiment_on_cache<C>(
 
     let stats = compute_statistics(&results);
     info!(
-        "Average latency: {}",
-        get_time_string(stats.average_latency as u128)
+        "Average latency: {} ({:.2} us)",
+        get_time_string(stats.average_latency as u128),
+        stats.average_latency / 1_000.0
     );
     info!("Saving Results...");
     let request_starts = results
