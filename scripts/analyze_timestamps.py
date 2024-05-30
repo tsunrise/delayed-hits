@@ -7,6 +7,8 @@ def analyze_timestamps(request_timestamps_path, response_timestamps_path):
     # Load the binary response timestamps (u64 for each)
     response_timestamps = np.load(response_timestamps_path)
 
+    print("Number of request timestamps: {}".format(len(request_timestamps)))
+    print("Number of response timestamps: {}".format(len(response_timestamps)))
     print("Average delay {}".format(np.mean(response_timestamps - request_timestamps)))
     print("Request timestamps: {}".format(request_timestamps[12:]))
     print("Response timestamps: {}".format(response_timestamps[12:]))
