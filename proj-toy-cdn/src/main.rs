@@ -221,6 +221,14 @@ async fn experiment_on_cache<C>(
         origin_response_timestamps,
     )
     .unwrap();
+    info!("Analyzing P99 Latency...");
+    let mut latencies = results
+        .iter()
+        .map(|r| r.completion_timestamp - r.request_timestamp)
+        .collect::<Vec<_>>();
+    latencies.sort();
+    let p99 = latencies[(latencies.len() as f64 * 0.99).round() as usize];
+    info!("P99 Latency: {:.2} ms", p99 as f64 / 1_000_000.0);
 }
 
 async fn experiment(
