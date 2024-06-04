@@ -1,5 +1,6 @@
 mod cdn_parser;
 mod models;
+mod ms_prod_parser;
 mod msr_storage_parser;
 mod pcap_parser;
 mod post_process;
@@ -80,6 +81,23 @@ fn process_cdn_traces() {
     post_process_requests(raw_requests, &mut writer).unwrap();
     writer.flush().unwrap();
 }
+
+fn process_ms_prod_traces() {
+    let data_root = PathBuf::from_str("data").unwrap().join("ms_prod");
+    // enumerate all files in the directory
+    let paths = std::fs::read_dir(&data_root.join("BuildServer").join("Traces"))
+        .unwrap()
+        .map(|entry| entry.unwrap().path())
+        .collect::<Vec<_>>();
+    let raw_requests = ms_prod_parser::parse_files(paths);
+
+    let output_path = data_root.join("processed.events");
+    let output_file = std::fs::File::create(output_path).unwrap();
+    let mut writer = std::io::BufWriter::new(output_file);
+    post_process_requests(raw_requests, &mut writer).unwrap();
+    writer.flush().unwrap();
+}
+
 #[derive(Debug, Clone, Subcommand)]
 enum SubArgs {
     NetTraces {
@@ -93,6 +111,7 @@ enum SubArgs {
         name: String,
     },
     CdnTraces,
+    MsProdTraces,
 }
 
 #[derive(Debug, Clone, Parser)]
@@ -112,6 +131,9 @@ fn main() {
         }
         SubArgs::CdnTraces => {
             process_cdn_traces();
+        }
+        SubArgs::MsProdTraces => {
+            process_ms_prod_traces();
         }
     }
 }

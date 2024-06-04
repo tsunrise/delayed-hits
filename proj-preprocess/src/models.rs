@@ -9,7 +9,7 @@ pub struct NetTraceExperimentConfig {
     pub traces: Vec<String>,
 }
 
-#[derive(Debug, Clone, Copy)]
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Hash)]
 pub struct RawRequestWithTimestamp<T> {
     pub request: T,
     pub timestamp: Duration,
