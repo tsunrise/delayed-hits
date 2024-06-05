@@ -19,3 +19,5 @@ Cargo.lock
 
 *.npy
 *.png
+*.ipynb
+diagrams/
