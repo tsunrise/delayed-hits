@@ -19,7 +19,6 @@ def draw_cdn_experiment(path: str):
     # convert to ms (from ns)
     df = df / 1e3
 
-    categories = ["LRU", "LRU-MAD"]
     lru_latency = np.mean(df["LRU"])
     lru_mad_latency = np.mean(df["LRU-MAD"])
     lru_std = np.std(df["LRU"])
