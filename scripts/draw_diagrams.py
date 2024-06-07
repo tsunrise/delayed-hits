@@ -34,15 +34,21 @@ def draw_latency(data_path, label:str, xunits: list[float], xlabels: list[str], 
     plt.xlabel('Latency')
     plt.ylabel('\% Latency Improvement')
     plt.legend()
-    plt.title(f"{label}: {way}-way {assoc}-associative")
+    plt.title(f"{label}: {way}-way associative, {assoc} sets")
     # use down-triangle marker for all points
     plt.scatter(latencies, improvements, marker='v')
+    plt.tight_layout()
     plt.grid(True, which='major', axis='both', linestyle='--', linewidth=0.5)
 
 # %%
 # 2014 chicago, latency from 3us to 30s, ylim 45
 draw_latency('results/2014chicago.csv', '2014 Chicago Network Trace', [3e-3, 3e-2, 3e-1, 3, 3e1, 3e2, 3e3, 3e4], ['3us', '30us', '300us', '3ms', '30ms', '300ms', '3s', '30s'], 45)
 plt.savefig(f'{sim_dir}2014chicago.png')
+# same for 2014 San Jose, 2019 NYC
+draw_latency('results/san-jose.csv', '2014 San Jose Network Trace', [3e-3, 3e-2, 3e-1, 3, 3e1, 3e2, 3e3, 3e4], ['3us', '30us', '300us', '3ms', '30ms', '300ms', '3s', '30s'], 45)
+plt.savefig(f'{sim_dir}san-jose.png')
+draw_latency('results/2019nyc.csv', '2019 NYC Network Trace', [3e-3, 3e-2, 3e-1, 3, 3e1, 3e2, 3e3, 3e4], ['3us', '30us', '300us', '3ms', '30ms', '300ms', '3s', '30s'], 45)
+plt.savefig(f'{sim_dir}2019nyc.png')
 
 
 # %%
@@ -101,9 +107,9 @@ ax.bar_label(rect, padding=3, labels=[f'{mean:.2f}\n(±{std:.2f})' for mean, std
 rect = ax.bar(x + bar_width/2, mad_means, bar_width, yerr=mad_stds, label='LRU-MAD', zorder=3)
 ax.bar_label(rect, padding=3, labels=[f'{mean:.2f}\n(±{std:.2f})' for mean, std in zip(mad_means, mad_stds)],fontsize=7)
 
-ax.set_xticks(x, [f'Paper (Origin B)\n (RTT:103ms claimed)\n improvement: {experiment_paper.improvement():.2f}%',
-                   f'05/29, 12:30pm PST\n (RTT:114ms idle,\n1500ms high load)\n improvement: {experiment_0529.improvement():.2f}%',
-                     f'06/04, 12am PST\n (RTT:113ms idle,\n364ms high load)\n improvement: {experiment_0604.improvement():.2f}%'], fontsize=7)
+ax.set_xticks(x, [f'Paper\'s Result (Origin B)\n (RTT:103ms claimed)\n improvement: {experiment_paper.improvement():.2f}%',
+                   f'$\\bf{{Our\ Result}}$, 05/29, 12:30pm PST\n (RTT:114ms idle,\n1500ms high load)\n improvement: {experiment_0529.improvement():.2f}%',
+                     f'$\\bf{{Our\ Result}}$, 06/04, 12am PST\n (RTT:113ms idle,\n364ms high load)\n improvement: {experiment_0604.improvement():.2f}%'], fontsize=7)
 ax.set_ylim(0, 30)
 ax.set_ylabel('Average Latency (ms)')
 ax.legend()
@@ -133,12 +139,12 @@ latencies_mad = request_ends_mad - request_starts_mad
 
 # %%
 # remove hit case and edge case
-latencies_lru_nh = latencies_lru[(latencies_lru > 5e7) & (latencies_lru < 3e8)] 
-latencies_mad_nh = latencies_mad[(latencies_mad > 5e7) & (latencies_mad < 3e8)]
+latencies_lru_nh = latencies_lru[(latencies_lru > 5e6) & (latencies_lru < 3e8)] 
+latencies_mad_nh = latencies_mad[(latencies_mad > 5e6) & (latencies_mad < 3e8)]
 
 # %%
-miss_rate_lru = np.sum(latencies_lru > 5e7) / len(latencies_lru)
-miss_rate_mad = np.sum(latencies_mad > 5e7) / len(latencies_mad)
+miss_rate_lru = np.sum(latencies_lru > 1e6) / len(latencies_lru)
+miss_rate_mad = np.sum(latencies_mad > 1e6) / len(latencies_mad)
 
 # %%
 plt.figure(figsize=(6, 4))
