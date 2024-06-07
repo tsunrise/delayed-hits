@@ -18,8 +18,15 @@ def download_traces(toml_filepath: str, user: str, password: str):
         for path in pcaps + times:
             os.system(f"mkdir -p {output_dir}")
             if not os.path.exists(f"{output_dir}/{os.path.basename(path)}"):
-                if not os.path.exists(f"{output_dir}/{os.path.basename(path)}.gz"):
-                    os.system(f"aria2c -x 8 -d {output_dir} {path}.gz --http-user={user} --http-passwd={password}")
+                status = os.system(f"aria2c -x 8 -d {output_dir} {path}.gz --http-user={user} --http-passwd={password}")
+                if status != 0:
+                    print(f"aria2c failed, trying wget")
+                    status = os.system(f"wget --http-user={user} --http-password={password} -P {output_dir} {path}.gz")
+                    if status != 0:
+                        print(f"wget failed, trying curl")
+                        status = os.system(f"curl --user {user}:{password} {path}.gz -o {output_dir}/{os.path.basename(path)}.gz")
+                        if status != 0:
+                            raise Exception(f"Failed to download {path}")
                 # unzip the file
                 os.system(f"gunzip {output_dir}/{os.path.basename(path)}.gz")
             else:
