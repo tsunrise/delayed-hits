@@ -2,7 +2,7 @@
 
 This repository contains the code to replicate the result of the paper "Cache with Delayed Hits" by Nirav Atre et al \[[link](https://dl.acm.org/doi/10.1145/3387514.3405883)\].
 
-Check our blog post: <https://reproducingnetworkresearch.wordpress.com/2024/06/08/cs244-24-replicating-caching-with-delayed-hits/>
+Check our blog post: <https://reproducingnetworkresearch.wordpress.com/2024/06/08/cs244-24-replicating-caching-with-delayed-hits/> (short link: [waga.me/delayed-hits](https://waga.me/delayed-hits))
 
 ## Setup
 
