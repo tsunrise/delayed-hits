@@ -7,6 +7,9 @@ Check our blog post: https://reproducingnetworkresearch.wordpress.com/?p=13178
 ## Setup
 
 1. Install Rust by following the instructions at <https://rustup.rs/>. The code is tested with rustc 1.78.0 (9b00956e5 2024-04-29) and is platform-independent. 
+
+    Note: If the code does not compile in future versions of Rust, it's highly likely that the `npy` crate used by `proj-toy-cdn` is not compatible. You can try to remove the `npy` dependency: we use this dependency to generate `.npy` files for plotting the results. You can safely remove the corresponding code without affecting the core functionality.
+
 2. To download the network trace using the script, make sure at least one of `aria2c`, `wget`, `curl` is in your path. In ubuntu, you can install `aria2c` by running
 
 ```sh
