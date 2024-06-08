@@ -21,10 +21,12 @@ As the first step, we need to convert raw traces of different format to a common
 
 ### Download and Preprocess the Network Trace
 
-We have the following traces available to use:
+We have the following trace available to use:
 
 - `data/net-traces/chicago.toml`: The Chicago trace at 2014-03-20 from 13:50 to 14:00. This trace is used by the authors in the paper.
-- `data/net-traces/chicago-lite.toml`: A smaller version of the trace used by the authors in the paper, mainly for testing purposes.
+-  You can adapt the toml file to download other traces from CAIDA.
+
+Here is how to download and preprocess the Chicago trace:
 
 1. Request dataset access from CAIDA: <https://www.caida.org/catalog/datasets/request_user_info_forms/passive_dataset_request/>. You need have access to
 
@@ -53,7 +55,7 @@ cargo run --release --bin proj-preprocess -- ms-prod-traces
 
 ### Download the processed CDN Trace
 
-The raw CDN trace is not available for download. You can download the processed trace here: <https://r2.tomshen.io/proj_host/cs244/cdn_long.downloaded.events.gz>. After downloading, you can unzip the file using `gunzip`.
+The raw CDN trace is not available for download. You can download the processed trace [here](https://r2.tomshen.io/proj_host/cs244/cdn_long.downloaded.events.gz). After downloading, you can unzip the file using `gunzip`.
 To verify the integrity of the unzipped file, the SHA1 hash is [here](data/cdn-traces/cdn_long.downloaded.events.sha1).
 
 ## Simulate LRU and LRU-MAD on processed trace
